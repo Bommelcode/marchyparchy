@@ -15,6 +15,15 @@ var rep: float = 0.5
 var customers_served: int = 0
 var won: bool = false
 
+# --- universal metrics ---
+var session_start_msec: int = 0
+var current_rate: float = 0.0
+var money_last_tick: float = 0.0
+var s1_perfect: int = 0
+var s1_good: int = 0
+var s1_mediocre: int = 0
+var s1_burnt: int = 0
+
 # --- stage 1 (office) ---
 var beans: int = 10
 var milk: int = 0
@@ -109,12 +118,16 @@ var supplier_buttons: Array[Button] = []
 var machine_clean_bar: ProgressBar
 var machine_calib_bar: ProgressBar
 var machine_press_bar: ProgressBar
+var s3_list: VBoxContainer
+var s3_rows: Array[Dictionary] = []  # [{info: Label, cut: Button}]
 var s3_status: Label
 var s4_status: Label
+var metrics_timer: Timer
 
 
 func _ready() -> void:
 	randomize()
+	session_start_msec = Time.get_ticks_msec()
 	_build_root_ui()
 	_enter_stage(1)
 
@@ -129,21 +142,21 @@ func _build_root_ui() -> void:
 	add_child(bg)
 
 	hud_label = Label.new()
-	hud_label.position = Vector2(20, 12)
-	hud_label.size = Vector2(920, 32)
-	hud_label.add_theme_font_size_override("font_size", 16)
+	hud_label.position = Vector2(20, 8)
+	hud_label.size = Vector2(920, 50)
+	hud_label.add_theme_font_size_override("font_size", 14)
 	add_child(hud_label)
 
 	notif_label = Label.new()
-	notif_label.position = Vector2(20, 44)
-	notif_label.size = Vector2(920, 24)
+	notif_label.position = Vector2(20, 60)
+	notif_label.size = Vector2(920, 22)
 	notif_label.modulate = Color(0.35, 0.55, 0.35)
 	add_child(notif_label)
 
 	stage_view = Control.new()
 	stage_view.anchor_right = 1.0
 	stage_view.anchor_bottom = 1.0
-	stage_view.offset_top = 78.0
+	stage_view.offset_top = 90.0
 	add_child(stage_view)
 
 	spawn_timer = Timer.new()
@@ -154,6 +167,12 @@ func _build_root_ui() -> void:
 	revenue_timer.wait_time = 1.0
 	revenue_timer.timeout.connect(_on_revenue_tick)
 	add_child(revenue_timer)
+
+	metrics_timer = Timer.new()
+	metrics_timer.wait_time = 1.0
+	metrics_timer.autostart = true
+	metrics_timer.timeout.connect(_on_metrics_tick)
+	add_child(metrics_timer)
 
 
 func _enter_stage(s: int) -> void:
@@ -176,6 +195,8 @@ func _enter_stage(s: int) -> void:
 	machine_clean_bar = null
 	machine_calib_bar = null
 	machine_press_bar = null
+	s3_list = null
+	s3_rows.clear()
 	s3_status = null
 	s4_status = null
 	spawn_timer.stop()
@@ -192,9 +213,20 @@ func _enter_stage(s: int) -> void:
 
 
 func _refresh_hud() -> void:
-	hud_label.text = "💰 $%s   ⭐ Rep %d%%   🪜 Stage %d/4 · %s   🎯 next: $%s" % [
+	var elapsed_s: int = (Time.get_ticks_msec() - session_start_msec) / 1000
+	var mm: int = elapsed_s / 60
+	var ss: int = elapsed_s % 60
+	var rate_sign: String = "↗" if current_rate >= 0.0 else "↘"
+	hud_label.text = "💰 $%s   ⭐ Rep %d%%   🪜 Stage %d/4 · %s   🎯 next: $%s\n⏱ %d:%02d   %s $%+.2f/s   🧑 served: %d   ✨ perfect: %d / 🔥 burnt: %d" % [
 		_fmt_money(money), int(rep * 100.0), stage, STAGE_NAMES[stage], _fmt_money(STAGE_GOALS[stage]),
+		mm, ss, rate_sign, current_rate, customers_served, s1_perfect, s1_burnt,
 	]
+
+
+func _on_metrics_tick() -> void:
+	current_rate = money - money_last_tick
+	money_last_tick = money
+	_refresh_hud()
 
 
 func _notify(msg: String) -> void:
@@ -325,20 +357,24 @@ func _brew_finished(grade: String, entry: Dictionary, bar: BrewBar) -> void:
 		"perfect":
 			revenue = float(base_price) + float(max_tip) * 1.4
 			q_delta = 0.05
+			s1_perfect += 1
 			msg = "✨ Perfect %s — $%d (incl. tip)" % [String(drink["name"]), int(revenue)]
 		"good":
 			revenue = float(base_price) + float(max_tip) * 0.6
 			q_delta = 0.01
+			s1_good += 1
 			msg = "👍 Decent %s — $%d" % [String(drink["name"]), int(revenue)]
 		"mediocre":
 			revenue = float(base_price) * 0.5
 			q_delta = -0.04
 			defect_chance = 0.10
+			s1_mediocre += 1
 			msg = "😐 Meh %s — $%d (no tip)" % [String(drink["name"]), int(revenue)]
 		_:  # "burnt"
 			revenue = 0.0
 			q_delta = -0.08
 			defect_chance = 0.30
+			s1_burnt += 1
 			msg = "🔥 Burnt the %s — refund." % String(drink["name"])
 	money += revenue
 	customers_served += 1
@@ -547,29 +583,36 @@ func _refresh_stage_2_ui() -> void:
 #  STAGE 3 — Chain CEO
 # ============================================================
 func _setup_stage_3() -> void:
-	_stage_title("🏢  Chain CEO — open locations across the city")
+	_stage_title("🏢  Chain CEO — open locations, balance traffic vs. costs")
 
 	var blurb: Label = Label.new()
-	blurb.text = "Each location generates revenue. Hire managers (👔) to double their output."
-	blurb.position = Vector2(20, 50)
+	blurb.text = "Each location has gross revenue and operating cost. Cost-cutting trims ops 40% but loses 8% traffic — diminishing returns past 2 cuts."
+	blurb.position = Vector2(20, 40)
 	blurb.size = Vector2(920, 28)
 	blurb.modulate = STAGE_FG[3]
+	blurb.add_theme_font_size_override("font_size", 12)
 	stage_view.add_child(blurb)
 
-	_make_stage_button("Open new location", Vector2(20, 100), _buy_location)
-	_make_stage_button("Hire next manager — $200", Vector2(260, 100), _hire_manager)
-	_make_stage_button("PROMOTE → Corporate CEO", Vector2(500, 100), _try_promote)
+	_make_stage_button("Open new location", Vector2(20, 78), _buy_location)
+	_make_stage_button("Hire next manager — $200", Vector2(260, 78), _hire_manager)
+	_make_stage_button("PROMOTE → Corporate CEO", Vector2(500, 78), _try_promote)
+
+	s3_list = VBoxContainer.new()
+	s3_list.position = Vector2(20, 140)
+	s3_list.size = Vector2(920, 280)
+	s3_list.add_theme_constant_override("separation", 4)
+	stage_view.add_child(s3_list)
 
 	s3_status = Label.new()
-	s3_status.position = Vector2(20, 170)
-	s3_status.size = Vector2(920, 320)
+	s3_status.position = Vector2(20, 430)
+	s3_status.size = Vector2(920, 28)
 	s3_status.modulate = STAGE_FG[3]
 	s3_status.add_theme_font_size_override("font_size", 14)
 	stage_view.add_child(s3_status)
 
 	revenue_timer.wait_time = 1.0
 	revenue_timer.start()
-	_update_s3_status()
+	_refresh_stage_3_ui()
 
 
 func _buy_location() -> void:
@@ -578,13 +621,14 @@ func _buy_location() -> void:
 		_notify("Need $%s for location #%d." % [_fmt_money(cost), locations.size() + 1])
 		return
 	money -= cost
-	var rev: float = 25.0 * pow(1.25, float(locations.size()))
+	var base_rev: float = 25.0 * pow(1.25, float(locations.size()))
 	locations.append({
 		"name": "Branch #%d" % (locations.size() + 1),
-		"revenue": rev,
+		"base_revenue": base_rev,
 		"manager": false,
+		"cuts": 0,
 	})
-	_update_s3_status()
+	_refresh_stage_3_ui()
 	_refresh_hud()
 
 
@@ -596,29 +640,96 @@ func _hire_manager() -> void:
 				return
 			money -= 200.0
 			loc["manager"] = true
-			_update_s3_status()
+			_refresh_stage_3_ui()
 			_refresh_hud()
 			return
 	_notify("All locations have managers.")
 
 
-func _update_s3_status() -> void:
-	if s3_status == null:
+func _cut_location_costs(idx: int) -> void:
+	if idx < 0 or idx >= locations.size():
 		return
-	var lines: Array[String] = []
-	var total: float = 0.0
-	for loc in locations:
-		var has_mgr: bool = bool(loc.get("manager", false))
-		var mult: float = 2.0 if has_mgr else 1.0
-		var rev: float = float(loc.get("revenue", 0.0)) * mult
-		total += rev
-		lines.append("• %s — $%.1f/s %s" % [String(loc.get("name", "?")), rev, "👔" if has_mgr else ""])
-	if lines.is_empty():
-		lines.append("(no locations yet — buy one to start earning)")
-	var next_cost: float = 500.0 * pow(1.6, float(locations.size()))
-	lines.append("")
-	lines.append("Total: $%.1f/s    Next location: $%s" % [total, _fmt_money(next_cost)])
-	s3_status.text = "\n".join(lines)
+	var loc: Dictionary = locations[idx]
+	var cuts: int = int(loc.get("cuts", 0))
+	if cuts >= 5:
+		_notify("Already cut to the bone — can't squeeze more from %s." % String(loc.get("name", "?")))
+		return
+	loc["cuts"] = cuts + 1
+	var traffic_pct: int = int(pow(0.92, float(cuts + 1)) * 100.0)
+	_notify("%s: cost cut #%d. Traffic now %d%%." % [String(loc.get("name", "?")), cuts + 1, traffic_pct])
+	_refresh_stage_3_ui()
+	_refresh_hud()
+
+
+func _location_revenue(loc: Dictionary) -> float:
+	var base: float = float(loc.get("base_revenue", 0.0))
+	var mgr_mult: float = 2.0 if bool(loc.get("manager", false)) else 1.0
+	var traffic: float = pow(0.92, float(loc.get("cuts", 0)))
+	return base * mgr_mult * traffic
+
+
+func _location_cost(loc: Dictionary) -> float:
+	var base: float = float(loc.get("base_revenue", 0.0))
+	var mgr_mult: float = 1.5 if bool(loc.get("manager", false)) else 1.0
+	var ops_mult: float = pow(0.60, float(loc.get("cuts", 0)))
+	return base * 0.30 * mgr_mult * ops_mult
+
+
+func _format_location_row(loc: Dictionary) -> String:
+	var rev: float = _location_revenue(loc)
+	var cost: float = _location_cost(loc)
+	var net: float = rev - cost
+	var traffic: int = int(pow(0.92, float(loc.get("cuts", 0))) * 100.0)
+	var mgr_str: String = "👔" if bool(loc.get("manager", false)) else "·  "
+	var cuts: int = int(loc.get("cuts", 0))
+	return "%s  %s   $%5.1f rev  −  $%4.1f cost  =  $%+5.1f net   ·   traffic %3d%%   ·   cuts %d/5" % [
+		mgr_str, String(loc.get("name", "?")), rev, cost, net, traffic, cuts,
+	]
+
+
+func _add_s3_row(idx: int) -> void:
+	if s3_list == null:
+		return
+	var row: HBoxContainer = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var info: Label = Label.new()
+	info.size = Vector2(770, 28)
+	info.custom_minimum_size = Vector2(770, 28)
+	info.modulate = STAGE_FG[3]
+	info.add_theme_font_size_override("font_size", 13)
+	row.add_child(info)
+	var cut_btn: Button = Button.new()
+	cut_btn.text = "Cut costs"
+	cut_btn.size = Vector2(110, 26)
+	cut_btn.custom_minimum_size = Vector2(110, 26)
+	cut_btn.pressed.connect(_cut_location_costs.bind(idx))
+	row.add_child(cut_btn)
+	s3_list.add_child(row)
+	s3_rows.append({"info": info, "cut": cut_btn})
+
+
+func _refresh_stage_3_ui() -> void:
+	while s3_rows.size() < locations.size():
+		_add_s3_row(s3_rows.size())
+	for i in range(locations.size()):
+		if i >= s3_rows.size():
+			continue
+		var row: Dictionary = s3_rows[i]
+		(row["info"] as Label).text = _format_location_row(locations[i])
+	if s3_status != null:
+		var total_rev: float = 0.0
+		var total_cost: float = 0.0
+		for loc in locations:
+			total_rev += _location_revenue(loc)
+			total_cost += _location_cost(loc)
+		var net: float = total_rev - total_cost
+		var margin: int = 0
+		if total_rev > 0.0:
+			margin = int(net / total_rev * 100.0)
+		var next_cost: float = 500.0 * pow(1.6, float(locations.size()))
+		s3_status.text = "📊  %d locations · gross $%.1f/s − costs $%.1f/s = NET $%+.1f/s   ·   margin %d%%   ·   next: $%s" % [
+			locations.size(), total_rev, total_cost, net, margin, _fmt_money(next_cost),
+		]
 
 
 # ============================================================
@@ -697,12 +808,13 @@ func _on_revenue_tick() -> void:
 			money += _stage_2_revenue_per_sec()
 			_refresh_stage_2_ui()
 		3:
-			var total: float = 0.0
+			var total_rev: float = 0.0
+			var total_cost: float = 0.0
 			for loc in locations:
-				var mult: float = 2.0 if bool(loc.get("manager", false)) else 1.0
-				total += float(loc.get("revenue", 0.0)) * mult
-			money += total
-			_update_s3_status()
+				total_rev += _location_revenue(loc)
+				total_cost += _location_cost(loc)
+			money += total_rev - total_cost
+			_refresh_stage_3_ui()
 		4:
 			var drift: float = randf_range(-2.0, 2.0) + float(marketing_level) * 0.6
 			stock_price = maxf(stock_price + drift, 1.0)
