@@ -24,6 +24,13 @@ var total_good: float = 0.0
 var total_mediocre: float = 0.0
 var total_burnt: float = 0.0
 
+# --- chart histories (universal, populated each metrics tick) ---
+var quality_history: Array[float] = []
+var machine_clean_history: Array[float] = []
+var machine_calib_history: Array[float] = []
+var machine_press_history: Array[float] = []
+var avg_promo_history: Array[float] = []
+
 # --- stage 1 (office) ---
 var beans: int = 10
 var milk: int = 0
@@ -64,7 +71,9 @@ var marketing_level: int = 0
 var corporate_staff: int = 8
 var staff_salary: float = 25.0  # $/head/s base
 var morale: float = 0.7
-var bulk_tier: int = 0
+var arabica_tier: int = 0
+var robusta_tier: int = 0
+var milk_tier: int = 0
 var cartel_active: bool = false
 var antitrust_risk: float = 0.0
 var strike_seconds: int = 0
@@ -97,7 +106,7 @@ const STAGE_NAMES: Array[String] = [
 	"Chain CEO",
 	"Corporate CEO",
 ]
-const STAGE_GOALS: Array[float] = [0.0, 200.0, 2000.0, 100000.0, 10000000.0]
+const STAGE_GOALS: Array[float] = [0.0, 200.0, 2000.0, 100000.0, 100000000.0]
 const STAGE_BG: Array[Color] = [
 	Color.WHITE,
 	Color(0.97, 0.93, 0.85),
@@ -156,7 +165,9 @@ var s3_rows: Array[Dictionary] = []  # [{info: Label, cut: Button}]
 var s3_status: Label
 var s4_status: Label
 var cartel_button: Button
-var bulk_button: Button
+var arabica_lock_btn: Button
+var robusta_lock_btn: Button
+var milk_lock_btn: Button
 var buyback_button: Button
 var stock_chart_title: Label
 var stock_chart: Control
@@ -166,6 +177,12 @@ var robusta_chart_title: Label
 var robusta_chart: Control
 var milk_chart_title: Label
 var milk_chart: Control
+var s1_quality_chart_title: Label
+var s1_quality_chart: Control
+var s2_machine_chart_title: Label
+var s2_machine_chart: Control
+var s3_promo_chart_title: Label
+var s3_promo_chart: Control
 var metrics_timer: Timer
 var dev_skip_button: Button
 
@@ -269,7 +286,9 @@ func _enter_stage(s: int) -> void:
 	s3_status = null
 	s4_status = null
 	cartel_button = null
-	bulk_button = null
+	arabica_lock_btn = null
+	robusta_lock_btn = null
+	milk_lock_btn = null
 	buyback_button = null
 	stock_chart_title = null
 	stock_chart = null
@@ -279,6 +298,12 @@ func _enter_stage(s: int) -> void:
 	robusta_chart = null
 	milk_chart_title = null
 	milk_chart = null
+	s1_quality_chart_title = null
+	s1_quality_chart = null
+	s2_machine_chart_title = null
+	s2_machine_chart = null
+	s3_promo_chart_title = null
+	s3_promo_chart = null
 	spawn_timer.stop()
 	revenue_timer.stop()
 
@@ -307,7 +332,57 @@ func _refresh_hud() -> void:
 func _on_metrics_tick() -> void:
 	current_rate = money - money_last_tick
 	money_last_tick = money
+	_append_histories()
+	match stage:
+		1: _update_stage_1_charts()
+		2: _refresh_stage_2_ui()
+		3: _refresh_stage_3_ui()
+		4: _refresh_stage_4_ui()
 	_refresh_hud()
+
+
+func _append_histories() -> void:
+	quality_history.append(quality)
+	if quality_history.size() > HISTORY_LEN:
+		quality_history.pop_front()
+
+	machine_clean_history.append(machine_clean)
+	machine_calib_history.append(machine_calibration)
+	machine_press_history.append(machine_pressure)
+	if machine_clean_history.size() > HISTORY_LEN:
+		machine_clean_history.pop_front()
+	if machine_calib_history.size() > HISTORY_LEN:
+		machine_calib_history.pop_front()
+	if machine_press_history.size() > HISTORY_LEN:
+		machine_press_history.pop_front()
+
+	var sum_promo: float = 0.0
+	for loc in locations:
+		sum_promo += float(loc.get("promotion", 0.0))
+	var avg: float = 0.0
+	if locations.size() > 0:
+		avg = sum_promo / float(locations.size())
+	avg_promo_history.append(avg)
+	if avg_promo_history.size() > HISTORY_LEN:
+		avg_promo_history.pop_front()
+
+	stock_history.append(stock_price)
+	arabica_history.append(arabica_price)
+	robusta_history.append(robusta_price)
+	milk_history.append(milk_price)
+	if stock_history.size() > HISTORY_LEN:
+		stock_history.pop_front()
+	if arabica_history.size() > HISTORY_LEN:
+		arabica_history.pop_front()
+	if robusta_history.size() > HISTORY_LEN:
+		robusta_history.pop_front()
+	if milk_history.size() > HISTORY_LEN:
+		milk_history.pop_front()
+
+
+func _update_stage_1_charts() -> void:
+	if s1_quality_chart != null:
+		s1_quality_chart.set_values(quality_history)
 
 
 func _record_cups(count: float, perfect_rate: float, burnt_rate: float) -> void:
@@ -374,6 +449,14 @@ func _setup_stage_1() -> void:
 	_make_stage_button("Steamer — $30", Vector2(500, 260), _buy_steamer)
 	_make_stage_button("Faster spawns — $40", Vector2(740, 260), _buy_machine)
 	_make_stage_button("PROMOTE → Café Owner", Vector2(20, 330), _try_promote)
+
+	# Quality trend chart (right of Promote)
+	var s1_color: Color = Color(0.55, 0.75, 0.45)
+	var s1_panel: Dictionary = _make_chart_panel(Vector2(260, 308), Vector2(380, 72), s1_color)
+	s1_quality_chart_title = s1_panel["title"]
+	s1_quality_chart = s1_panel["chart"]
+	s1_quality_chart_title.text = "✨ Quality trend (last %ds)" % HISTORY_LEN
+	(s1_quality_chart as LineChart).set_range(0.0, 1.0)
 
 	spawn_timer.wait_time = 3.0
 	spawn_timer.start()
@@ -607,6 +690,14 @@ func _setup_stage_2() -> void:
 	_make_stage_button("Calibrate", Vector2(670, 350), _calibrate_machine, Vector2(120, 32))
 	_make_stage_button("Tune", Vector2(670, 386), _tune_machine, Vector2(120, 32))
 
+	# Multi-line machine trend chart (right of buttons)
+	var s2_color: Color = Color(0.4, 0.55, 0.4)
+	var s2_panel: Dictionary = _make_chart_panel(Vector2(810, 308), Vector2(130, 110), s2_color)
+	s2_machine_chart_title = s2_panel["title"]
+	s2_machine_chart = s2_panel["chart"]
+	s2_machine_chart_title.text = "🛠️ Machine trends"
+	(s2_machine_chart as LineChart).set_range(0.0, 1.0)
+
 	revenue_timer.wait_time = 1.0
 	revenue_timer.start()
 	_refresh_stage_2_ui()
@@ -696,6 +787,13 @@ func _refresh_stage_2_ui() -> void:
 		machine_calib_bar.value = machine_calibration
 	if machine_press_bar != null:
 		machine_press_bar.value = machine_pressure
+	# machine trend chart
+	if s2_machine_chart != null:
+		(s2_machine_chart as LineChart).set_series([
+			{"values": machine_clean_history, "color": Color(0.30, 0.70, 0.95)},
+			{"values": machine_calib_history, "color": Color(0.95, 0.65, 0.30)},
+			{"values": machine_press_history, "color": Color(0.50, 0.85, 0.45)},
+		])
 	# stats panel — three lines so each multiplier is legible
 	if s2_status != null:
 		var sup: Dictionary = SUPPLIERS[current_supplier]
@@ -731,6 +829,14 @@ func _setup_stage_3() -> void:
 	_make_stage_button("Open new location", Vector2(20, 78), _buy_location)
 	_make_stage_button("Hire next manager — $200", Vector2(260, 78), _hire_manager)
 	_make_stage_button("PROMOTE → Corporate CEO", Vector2(500, 78), _try_promote)
+
+	# Average promo trend chart (right of buttons)
+	var s3_color: Color = Color(0.3, 0.5, 0.85)
+	var s3_panel: Dictionary = _make_chart_panel(Vector2(730, 70), Vector2(200, 60), s3_color)
+	s3_promo_chart_title = s3_panel["title"]
+	s3_promo_chart = s3_panel["chart"]
+	s3_promo_chart_title.text = "Avg promo (all branches)"
+	(s3_promo_chart as LineChart).set_range(0.0, 1.0)
 
 	s3_list = VBoxContainer.new()
 	s3_list.position = Vector2(20, 140)
@@ -885,6 +991,8 @@ func _add_s3_row(idx: int) -> void:
 func _refresh_stage_3_ui() -> void:
 	while s3_rows.size() < locations.size():
 		_add_s3_row(s3_rows.size())
+	if s3_promo_chart != null:
+		s3_promo_chart.set_values(avg_promo_history)
 	for i in range(locations.size()):
 		if i >= s3_rows.size():
 			continue
@@ -937,11 +1045,10 @@ func _setup_stage_4() -> void:
 	cartel_button = _make_stage_button("Form cartel", Vector2(480, 66), _toggle_cartel, Vector2(220, 42))
 	_make_stage_button("Layoff round", Vector2(710, 66), _layoff_round, Vector2(220, 42))
 
-	# Row 2 — HR & sourcing
+	# Row 2 — HR
 	_make_stage_button("Hire 5 corp — $1k", Vector2(20, 116), _hire_corporate, Vector2(220, 42))
 	_make_stage_button("Raise wages +10%", Vector2(250, 116), _raise_wages, Vector2(220, 42))
 	_make_stage_button("Cut wages −10%", Vector2(480, 116), _cut_wages, Vector2(220, 42))
-	bulk_button = _make_stage_button("Bulk", Vector2(710, 116), _buy_bulk_tier, Vector2(220, 42))
 
 	# charts
 	var stock_color: Color = Color(0.45, 0.85, 0.55)
@@ -961,9 +1068,14 @@ func _setup_stage_4() -> void:
 	milk_chart_title = mi_panel["title"]
 	milk_chart = mi_panel["chart"]
 
+	# Lock-contract buttons under each commodity chart
+	arabica_lock_btn = _make_stage_button("Lock arabica", Vector2(470, 274), _lock_arabica, Vector2(150, 28))
+	robusta_lock_btn = _make_stage_button("Lock robusta", Vector2(630, 274), _lock_robusta, Vector2(150, 28))
+	milk_lock_btn = _make_stage_button("Lock milk", Vector2(790, 274), _lock_milk, Vector2(150, 28))
+
 	s4_status = Label.new()
-	s4_status.position = Vector2(20, 285)
-	s4_status.size = Vector2(920, 175)
+	s4_status.position = Vector2(20, 312)
+	s4_status.size = Vector2(920, 138)
 	s4_status.modulate = STAGE_FG[4]
 	s4_status.add_theme_font_size_override("font_size", 13)
 	stage_view.add_child(s4_status)
@@ -1062,32 +1174,58 @@ func _toggle_cartel() -> void:
 	_refresh_stage_4_ui()
 
 
-func _buy_bulk_tier() -> void:
-	var next_tier: int = bulk_tier + 1
+func _lock_arabica() -> void:
+	_lock_commodity("arabica")
+
+
+func _lock_robusta() -> void:
+	_lock_commodity("robusta")
+
+
+func _lock_milk() -> void:
+	_lock_commodity("milk")
+
+
+func _lock_commodity(name: String) -> void:
+	var current_tier: int = 0
+	var current_price: float = 100.0
+	match name:
+		"arabica":
+			current_tier = arabica_tier
+			current_price = arabica_price
+		"robusta":
+			current_tier = robusta_tier
+			current_price = robusta_price
+		"milk":
+			current_tier = milk_tier
+			current_price = milk_price
+		_:
+			return
+	var next_tier: int = current_tier + 1
 	if next_tier >= BULK_TIERS.size():
-		_notify("Already at the top bulk tier.")
+		_notify("%s contract already maxed." % name.capitalize())
 		return
-	var cost: float = _bulk_cost(next_tier)
+	var cost: float = float(BULK_TIERS[next_tier]["cost"]) * (current_price / 100.0)
 	if money < cost:
-		_notify("Need $%s for %s (arabica $%.0f)." % [
-			_fmt_money(cost), String(BULK_TIERS[next_tier]["name"]), arabica_price,
-		])
+		_notify("Need $%s for %s tier %d (price $%.0f)." % [_fmt_money(cost), name.capitalize(), next_tier, current_price])
 		return
 	money -= cost
-	bulk_tier = next_tier
-	_notify("Locked %s at arabica $%.0f → supplier overhead × %.2f." % [
-		String(BULK_TIERS[bulk_tier]["name"]), arabica_price,
-		float(BULK_TIERS[bulk_tier]["discount"]),
+	match name:
+		"arabica": arabica_tier = next_tier
+		"robusta": robusta_tier = next_tier
+		"milk":    milk_tier = next_tier
+	var discount: float = float(BULK_TIERS[next_tier]["discount"])
+	_notify("Locked %s tier %d at $%.0f — leg now ×%.2f." % [
+		name.capitalize(), next_tier, current_price, discount,
 	])
 	_refresh_stage_4_ui()
 	_refresh_hud()
 
 
-func _bulk_cost(tier: int) -> float:
+func _commodity_lock_cost(tier: int, current_price: float) -> float:
 	if tier <= 0 or tier >= BULK_TIERS.size():
 		return 0.0
-	var base: float = float(BULK_TIERS[tier]["cost"])
-	return base * (arabica_price / 100.0)
+	return float(BULK_TIERS[tier]["cost"]) * (current_price / 100.0)
 
 
 func _make_sparkline(values: Array, max_chars: int = 28) -> String:
@@ -1138,9 +1276,13 @@ func _stage_4_payroll() -> float:
 
 
 func _stage_4_supplier_overhead() -> float:
-	# overhead scales with chain size, reduced by bulk tier
+	# overhead scales with chain size; reduction = average of three commodity tier discounts
 	var base: float = 50.0 + float(locations.size()) * 30.0
-	return base * float(BULK_TIERS[bulk_tier]["discount"])
+	var arab_d: float = float(BULK_TIERS[arabica_tier]["discount"])
+	var robu_d: float = float(BULK_TIERS[robusta_tier]["discount"])
+	var milk_d: float = float(BULK_TIERS[milk_tier]["discount"])
+	var combined: float = (arab_d + robu_d + milk_d) / 3.0
+	return base * combined
 
 
 func _stage_4_gross_revenue() -> float:
@@ -1165,17 +1307,9 @@ func _refresh_stage_4_ui() -> void:
 	if buyback_button != null:
 		var bb_cost: float = float(BUYBACK_BLOCK_SHARES) * stock_price
 		buyback_button.text = "Buy 100 sh — $%s" % _fmt_money(bb_cost)
-	if bulk_button != null:
-		var nt: int = bulk_tier + 1
-		if nt < BULK_TIERS.size():
-			bulk_button.text = "Lock %s — $%s" % [
-				String(BULK_TIERS[nt]["name"]),
-				_fmt_money(_bulk_cost(nt)),
-			]
-			bulk_button.disabled = false
-		else:
-			bulk_button.text = "Bulk maxed (×0.40)"
-			bulk_button.disabled = true
+	_update_lock_button(arabica_lock_btn, arabica_tier, arabica_price, "arabica")
+	_update_lock_button(robusta_lock_btn, robusta_tier, robusta_price, "robusta")
+	_update_lock_button(milk_lock_btn, milk_tier, milk_price, "milk")
 
 	# chart titles + data
 	var stock_change: float = 0.0
@@ -1220,9 +1354,10 @@ func _refresh_stage_4_ui() -> void:
 	lines.append("        Salary $%.1f/h/s   Morale %d%%   Payroll $%s/s" % [
 		staff_salary, int(morale * 100.0), _fmt_money(_stage_4_payroll()),
 	])
-	var bulk_info: Dictionary = BULK_TIERS[bulk_tier]
-	lines.append("🏭 OPS   Bulk: %s ×%.2f → supplier $%s/s   Marketing lv %d" % [
-		String(bulk_info["name"]), float(bulk_info["discount"]),
+	lines.append("🏭 OPS   Contracts: arab T%d ×%.2f · rob T%d ×%.2f · milk T%d ×%.2f → supplier $%s/s   Marketing lv %d" % [
+		arabica_tier, float(BULK_TIERS[arabica_tier]["discount"]),
+		robusta_tier, float(BULK_TIERS[robusta_tier]["discount"]),
+		milk_tier, float(BULK_TIERS[milk_tier]["discount"]),
 		_fmt_money(_stage_4_supplier_overhead()), marketing_level,
 	])
 	if cartel_active:
@@ -1240,11 +1375,24 @@ func _refresh_stage_4_ui() -> void:
 		_fmt_money(_stage_4_supplier_overhead()),
 		_fmt_money(_stage_4_net_revenue()),
 	])
-	lines.append("🎯 Goal: $10M to IPO")
+	lines.append("🎯 Goal: $100M to IPO")
 	if won:
 		lines.append("")
 		lines.append("🏆 Corporate Coffee Inc. is public. You won.")
 	s4_status.text = "\n".join(lines)
+
+
+func _update_lock_button(btn: Button, current_tier: int, current_price: float, label_name: String) -> void:
+	if btn == null:
+		return
+	var next_tier: int = current_tier + 1
+	if next_tier >= BULK_TIERS.size():
+		btn.text = "%s maxed" % label_name.capitalize()
+		btn.disabled = true
+		return
+	var cost: float = _commodity_lock_cost(next_tier, current_price)
+	btn.text = "Lock %s T%d — $%s" % [label_name, next_tier, _fmt_money(cost)]
+	btn.disabled = false
 
 
 func _make_chart_panel(pos: Vector2, sz: Vector2, color: Color) -> Dictionary:
@@ -1312,22 +1460,9 @@ func _on_revenue_tick() -> void:
 			if cartel_active:
 				drift += 1.0
 			stock_price = clampf(stock_price + drift, 10.0, 1000.0)
-			stock_history.append(stock_price)
-			if stock_history.size() > HISTORY_LEN:
-				stock_history.pop_front()
-			# Commodity walks
 			arabica_price = clampf(arabica_price + randf_range(-4.0, 4.0), 30.0, 200.0)
 			robusta_price = clampf(robusta_price + randf_range(-3.0, 3.0), 20.0, 150.0)
 			milk_price = clampf(milk_price + randf_range(-2.0, 2.0), 20.0, 100.0)
-			arabica_history.append(arabica_price)
-			robusta_history.append(robusta_price)
-			milk_history.append(milk_price)
-			if arabica_history.size() > HISTORY_LEN:
-				arabica_history.pop_front()
-			if robusta_history.size() > HISTORY_LEN:
-				robusta_history.pop_front()
-			if milk_history.size() > HISTORY_LEN:
-				milk_history.pop_front()
 			# antitrust risk dynamics
 			if cartel_active:
 				antitrust_risk = clampf(antitrust_risk + 0.006, 0.0, 1.0)
@@ -1365,7 +1500,7 @@ func _try_promote() -> void:
 func _check_win() -> void:
 	if won:
 		return
-	if money >= 10_000_000.0:
+	if money >= 100_000_000.0:
 		won = true
 		_notify("🏆  YOU WON — Corporate Coffee Inc. is a household name.")
 		revenue_timer.stop()
@@ -1578,7 +1713,8 @@ class BrewBar extends Control:
 #  LINE CHART WIDGET
 # ============================================================
 class LineChart extends Control:
-	var values: Array = []
+	var values: Array = []      # single-series fallback
+	var series: Array = []      # [{values: Array, color: Color}, ...]
 	var line_color: Color = Color.BLACK
 	var fill_color: Color = Color(0.0, 0.0, 0.0, 0.15)
 	var bg_color: Color = Color(1.0, 1.0, 1.0, 0.06)
@@ -1587,48 +1723,76 @@ class LineChart extends Control:
 	var max_y: float = 1.0
 	var auto_scale: bool = true
 
-	func set_values(v: Array) -> void:
-		values = v.duplicate()
-		if auto_scale and values.size() > 0:
-			var lo: float = INF
-			var hi: float = -INF
-			for x in values:
-				var f: float = float(x)
-				if f < lo:
-					lo = f
-				if f > hi:
-					hi = f
-			if hi - lo < 0.01:
-				hi = lo + 1.0
-			# small padding so the line isn't flush against borders
-			var pad: float = (hi - lo) * 0.1
-			min_y = lo - pad
-			max_y = hi + pad
+	func set_range(lo: float, hi: float) -> void:
+		min_y = lo
+		max_y = hi
+		auto_scale = false
 		queue_redraw()
 
+	func set_values(v: Array) -> void:
+		values = v.duplicate()
+		series = []
+		_autoscale_from(values)
+		queue_redraw()
+
+	func set_series(s: Array) -> void:
+		series = []
+		var combined: Array = []
+		for entry in s:
+			var entry_vals: Array = entry.get("values", [])
+			series.append({"values": entry_vals.duplicate(), "color": entry.get("color", line_color)})
+			for x in entry_vals:
+				combined.append(x)
+		values = []
+		_autoscale_from(combined)
+		queue_redraw()
+
+	func _autoscale_from(combined: Array) -> void:
+		if not auto_scale or combined.is_empty():
+			return
+		var lo: float = INF
+		var hi: float = -INF
+		for x in combined:
+			var f: float = float(x)
+			if f < lo:
+				lo = f
+			if f > hi:
+				hi = f
+		if hi - lo < 0.01:
+			hi = lo + 1.0
+		var pad: float = (hi - lo) * 0.1
+		min_y = lo - pad
+		max_y = hi + pad
+
 	func _draw() -> void:
-		var w: float = size.x
-		var h: float = size.y
 		draw_rect(Rect2(Vector2.ZERO, size), bg_color)
 		draw_rect(Rect2(Vector2.ZERO, size), border_color, false, 1.0)
-		if values.size() < 2:
+		if not series.is_empty():
+			for entry in series:
+				_draw_line(entry["values"], entry["color"], false)
+		elif values.size() >= 2:
+			_draw_line(values, line_color, true)
+
+	func _draw_line(vals: Array, color: Color, with_fill: bool) -> void:
+		if vals.size() < 2:
 			return
+		var w: float = size.x
+		var h: float = size.y
 		var rng: float = max_y - min_y
 		if rng < 0.01:
 			rng = 1.0
-		var n: int = values.size()
+		var n: int = vals.size()
 		var pts: PackedVector2Array = PackedVector2Array()
 		for i in range(n):
 			var x: float = float(i) / float(n - 1) * (w - 4.0) + 2.0
-			var y: float = h - 2.0 - (float(values[i]) - min_y) / rng * (h - 4.0)
+			var y: float = h - 2.0 - (float(vals[i]) - min_y) / rng * (h - 4.0)
 			pts.append(Vector2(x, y))
-		# fill under the line
-		var fill_pts: PackedVector2Array = PackedVector2Array()
-		fill_pts.append(Vector2(2.0, h - 2.0))
-		for p in pts:
-			fill_pts.append(p)
-		fill_pts.append(Vector2(w - 2.0, h - 2.0))
-		draw_colored_polygon(fill_pts, fill_color)
-		# the line itself
+		if with_fill:
+			var fill_pts: PackedVector2Array = PackedVector2Array()
+			fill_pts.append(Vector2(2.0, h - 2.0))
+			for p in pts:
+				fill_pts.append(p)
+			fill_pts.append(Vector2(w - 2.0, h - 2.0))
+			draw_colored_polygon(fill_pts, fill_color)
 		for i in range(n - 1):
-			draw_line(pts[i], pts[i + 1], line_color, 2.0)
+			draw_line(pts[i], pts[i + 1], color, 2.0)
