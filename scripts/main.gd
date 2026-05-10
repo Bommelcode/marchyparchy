@@ -1479,6 +1479,8 @@ func _on_revenue_tick() -> void:
 				0.45 + 0.30 * s2_health,   # perfect rate: 45–75%
 				maxf(0.02, 0.15 - 0.10 * s2_health),  # burnt rate: 5–15%
 			)
+			# rep slowly recovers per cup served, gated by machine health
+			rep = clampf(rep + float(baristas) * 0.0003 * s2_health, 0.0, 1.0)
 			_refresh_stage_2_ui()
 		3:
 			var total_net: float = 0.0
