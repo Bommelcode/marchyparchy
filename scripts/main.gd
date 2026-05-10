@@ -1147,7 +1147,7 @@ func _buy_stock() -> void:
 	money -= cost
 	var bought_at: float = stock_price
 	shares_owned += BUYBACK_BLOCK_SHARES
-	stock_price = clampf(stock_price + 1.5, 10.0, 1000.0)
+	stock_price = clampf(stock_price + 1.5, 10.0, 100000.0)
 	_notify("Bought %d shares @ $%.2f. Total %d → +$%.1f/s passive." % [
 		BUYBACK_BLOCK_SHARES, bought_at, shares_owned,
 		float(shares_owned) * BUYBACK_REVENUE_PER_SHARE,
@@ -1503,7 +1503,7 @@ func _on_revenue_tick() -> void:
 			var drift: float = randf_range(-3.0, 3.0) + float(marketing_level) * 0.4
 			if cartel_active:
 				drift += 1.0
-			stock_price = clampf(stock_price + drift, 10.0, 1000.0)
+			stock_price = clampf(stock_price + drift, 10.0, 100000.0)
 			arabica_price = clampf(arabica_price + randf_range(-4.0, 4.0), 30.0, 200.0)
 			robusta_price = clampf(robusta_price + randf_range(-3.0, 3.0), 20.0, 150.0)
 			milk_price = clampf(milk_price + randf_range(-2.0, 2.0), 20.0, 100.0)
