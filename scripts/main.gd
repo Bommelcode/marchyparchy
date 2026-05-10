@@ -194,6 +194,7 @@ var sfx_good: AudioStreamPlayer
 var sfx_mediocre: AudioStreamPlayer
 var sfx_burnt: AudioStreamPlayer
 var sfx_defect: AudioStreamPlayer
+var s2_audio_timer: Timer
 
 
 func _ready() -> void:
@@ -260,6 +261,10 @@ func _build_root_ui() -> void:
 	sfx_burnt = _make_sfx(_synth_buzz(180.0, 0.50, 0.50))
 	sfx_defect = _make_sfx(_synth_descend(440.0, 220.0, 0.60, 0.45))
 
+	s2_audio_timer = Timer.new()
+	s2_audio_timer.timeout.connect(_on_s2_audio_tick)
+	add_child(s2_audio_timer)
+
 
 func _enter_stage(s: int) -> void:
 	stage = s
@@ -306,6 +311,8 @@ func _enter_stage(s: int) -> void:
 	s3_promo_chart = null
 	spawn_timer.stop()
 	revenue_timer.stop()
+	if s2_audio_timer != null:
+		s2_audio_timer.stop()
 
 	match s:
 		1: _setup_stage_1()
@@ -700,7 +707,42 @@ func _setup_stage_2() -> void:
 
 	revenue_timer.wait_time = 1.0
 	revenue_timer.start()
+	_retune_s2_audio()
 	_refresh_stage_2_ui()
+
+
+func _retune_s2_audio() -> void:
+	if s2_audio_timer == null:
+		return
+	if baristas <= 0:
+		s2_audio_timer.stop()
+		return
+	# 1 brew/sec/barista; clamp to a reasonable range
+	s2_audio_timer.wait_time = clampf(1.0 / float(baristas), 0.12, 2.0)
+	if s2_audio_timer.is_stopped():
+		s2_audio_timer.start()
+
+
+func _on_s2_audio_tick() -> void:
+	if stage != 2 or baristas <= 0:
+		return
+	var health: float = _stage_2_machine_health()
+	var perfect_p: float = 0.45 + 0.30 * health
+	var burnt_p: float = maxf(0.02, 0.15 - 0.10 * health)
+	var roll: float = randf()
+	var sfx: AudioStreamPlayer
+	if roll < perfect_p:
+		sfx = sfx_perfect
+	elif roll > 1.0 - burnt_p:
+		sfx = sfx_burnt
+	else:
+		sfx = sfx_good
+	if sfx == null:
+		return
+	# softer as the café gets busier — 1/sqrt(baristas) in linear gain
+	var gain: float = 1.0 / sqrt(maxf(float(baristas), 1.0))
+	sfx.volume_db = linear_to_db(clampf(gain, 0.05, 1.0))
+	sfx.play()
 
 
 func _hire_barista() -> void:
@@ -710,6 +752,7 @@ func _hire_barista() -> void:
 		return
 	money -= cost
 	baristas += 1
+	_retune_s2_audio()
 	_refresh_stage_2_ui()
 	_refresh_hud()
 
