@@ -69,6 +69,18 @@ var cartel_active: bool = false
 var antitrust_risk: float = 0.0
 var strike_seconds: int = 0
 var layoff_cooldown: int = 0
+var shares_owned: int = 0
+var stock_history: Array[float] = []
+var arabica_price: float = 100.0
+var robusta_price: float = 80.0
+var milk_price: float = 50.0
+var arabica_history: Array[float] = []
+var robusta_history: Array[float] = []
+var milk_history: Array[float] = []
+const BUYBACK_BLOCK_SHARES: int = 100
+const BUYBACK_REVENUE_PER_SHARE: float = 0.5
+const HISTORY_LEN: int = 32
+const SPARK_CHARS: Array[String] = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
 
 const BULK_TIERS: Array[Dictionary] = [
 	{"name": "no contracts",    "cost": 0.0,         "discount": 1.00},
@@ -145,6 +157,7 @@ var s3_status: Label
 var s4_status: Label
 var cartel_button: Button
 var bulk_button: Button
+var buyback_button: Button
 var metrics_timer: Timer
 var dev_skip_button: Button
 
@@ -249,6 +262,7 @@ func _enter_stage(s: int) -> void:
 	s4_status = null
 	cartel_button = null
 	bulk_button = null
+	buyback_button = null
 	spawn_timer.stop()
 	revenue_timer.stop()
 
@@ -903,7 +917,7 @@ func _setup_stage_4() -> void:
 
 	# Row 1 — capital actions
 	_make_stage_button("Marketing — $1k", Vector2(20, 66), _buy_marketing, Vector2(220, 42))
-	_make_stage_button("Buyback — $5k", Vector2(250, 66), _buy_stock, Vector2(220, 42))
+	buyback_button = _make_stage_button("Buy 100 sh", Vector2(250, 66), _buy_stock, Vector2(220, 42))
 	cartel_button = _make_stage_button("Form cartel", Vector2(480, 66), _toggle_cartel, Vector2(220, 42))
 	_make_stage_button("Layoff round", Vector2(710, 66), _layoff_round, Vector2(220, 42))
 
@@ -914,10 +928,10 @@ func _setup_stage_4() -> void:
 	bulk_button = _make_stage_button("Bulk", Vector2(710, 116), _buy_bulk_tier, Vector2(220, 42))
 
 	s4_status = Label.new()
-	s4_status.position = Vector2(20, 175)
-	s4_status.size = Vector2(920, 280)
+	s4_status.position = Vector2(20, 170)
+	s4_status.size = Vector2(920, 290)
 	s4_status.modulate = STAGE_FG[4]
-	s4_status.add_theme_font_size_override("font_size", 14)
+	s4_status.add_theme_font_size_override("font_size", 13)
 	stage_view.add_child(s4_status)
 
 	revenue_timer.wait_time = 1.0
@@ -936,11 +950,18 @@ func _buy_marketing() -> void:
 
 
 func _buy_stock() -> void:
-	if money < 5000.0:
-		_notify("Need $5000.")
+	var cost: float = float(BUYBACK_BLOCK_SHARES) * stock_price
+	if money < cost:
+		_notify("Need $%s for %d shares at $%.2f." % [_fmt_money(cost), BUYBACK_BLOCK_SHARES, stock_price])
 		return
-	money -= 5000.0
-	stock_price += 5.0
+	money -= cost
+	var bought_at: float = stock_price
+	shares_owned += BUYBACK_BLOCK_SHARES
+	stock_price = clampf(stock_price + 1.5, 10.0, 1000.0)
+	_notify("Bought %d shares @ $%.2f. Total %d → +$%.1f/s passive." % [
+		BUYBACK_BLOCK_SHARES, bought_at, shares_owned,
+		float(shares_owned) * BUYBACK_REVENUE_PER_SHARE,
+	])
 	_refresh_stage_4_ui()
 	_refresh_hud()
 
@@ -1012,17 +1033,68 @@ func _buy_bulk_tier() -> void:
 	if next_tier >= BULK_TIERS.size():
 		_notify("Already at the top bulk tier.")
 		return
-	var cost: float = float(BULK_TIERS[next_tier]["cost"])
+	var cost: float = _bulk_cost(next_tier)
 	if money < cost:
-		_notify("Need $%s for %s." % [_fmt_money(cost), String(BULK_TIERS[next_tier]["name"])])
+		_notify("Need $%s for %s (arabica $%.0f)." % [
+			_fmt_money(cost), String(BULK_TIERS[next_tier]["name"]), arabica_price,
+		])
 		return
 	money -= cost
 	bulk_tier = next_tier
-	_notify("Upgraded to %s — supplier overhead × %.2f." % [
-		String(BULK_TIERS[bulk_tier]["name"]), float(BULK_TIERS[bulk_tier]["discount"]),
+	_notify("Locked %s at arabica $%.0f → supplier overhead × %.2f." % [
+		String(BULK_TIERS[bulk_tier]["name"]), arabica_price,
+		float(BULK_TIERS[bulk_tier]["discount"]),
 	])
 	_refresh_stage_4_ui()
 	_refresh_hud()
+
+
+func _bulk_cost(tier: int) -> float:
+	if tier <= 0 or tier >= BULK_TIERS.size():
+		return 0.0
+	var base: float = float(BULK_TIERS[tier]["cost"])
+	return base * (arabica_price / 100.0)
+
+
+func _make_sparkline(values: Array, max_chars: int = 28) -> String:
+	if values.is_empty():
+		return "—"
+	var start: int = maxi(0, values.size() - max_chars)
+	var slice: Array = values.slice(start, values.size())
+	var lo: float = INF
+	var hi: float = -INF
+	for v in slice:
+		var fv: float = float(v)
+		if fv < lo:
+			lo = fv
+		if fv > hi:
+			hi = fv
+	var rng: float = hi - lo if hi > lo else 1.0
+	var s: String = ""
+	for v in slice:
+		var n: float = clampf((float(v) - lo) / rng, 0.0, 0.999)
+		s += SPARK_CHARS[int(n * 8.0)]
+	return s
+
+
+func _required_staff() -> int:
+	var base: int = 8 + int(float(locations.size()) * 1.5)
+	if cartel_active:
+		base += 3
+	base += marketing_level * 2
+	return maxi(base, 4)
+
+
+func _utilization() -> float:
+	var req: float = float(_required_staff())
+	return float(corporate_staff) / maxf(req, 1.0)
+
+
+func _utilization_mult() -> float:
+	var u: float = _utilization()
+	if u >= 1.0:
+		return 1.0
+	return u  # linear penalty when understaffed
 
 
 func _stage_4_payroll() -> float:
@@ -1042,7 +1114,10 @@ func _stage_4_gross_revenue() -> float:
 		return 0.0
 	var marketing_boost: float = 1.0 + float(marketing_level) * 0.15
 	var cartel_mult: float = 2.0 if cartel_active else 1.0
-	return stock_price * 100.0 * marketing_boost * cartel_mult
+	var util_mult: float = _utilization_mult()
+	var stock_baseline: float = stock_price * 100.0 * marketing_boost * cartel_mult * util_mult
+	var shares_revenue: float = float(shares_owned) * BUYBACK_REVENUE_PER_SHARE
+	return stock_baseline + shares_revenue
 
 
 func _stage_4_net_revenue() -> float:
@@ -1050,14 +1125,21 @@ func _stage_4_net_revenue() -> float:
 
 
 func _refresh_stage_4_ui() -> void:
+	# update buttons
 	if cartel_button != null:
 		cartel_button.text = "Break cartel" if cartel_active else "Form cartel"
+	if buyback_button != null:
+		var bb_cost: float = float(BUYBACK_BLOCK_SHARES) * stock_price
+		buyback_button.text = "Buy %d sh @ $%.2f → $%s" % [
+			BUYBACK_BLOCK_SHARES, stock_price, _fmt_money(bb_cost),
+		]
 	if bulk_button != null:
 		var nt: int = bulk_tier + 1
 		if nt < BULK_TIERS.size():
-			bulk_button.text = "Buy %s — $%s" % [
+			bulk_button.text = "Lock %s — $%s (arabica $%.0f)" % [
 				String(BULK_TIERS[nt]["name"]),
-				_fmt_money(float(BULK_TIERS[nt]["cost"])),
+				_fmt_money(_bulk_cost(nt)),
+				arabica_price,
 			]
 			bulk_button.disabled = false
 		else:
@@ -1065,33 +1147,70 @@ func _refresh_stage_4_ui() -> void:
 			bulk_button.disabled = true
 	if s4_status == null:
 		return
+
 	var lines: Array[String] = []
-	lines.append("📈  Stock $%.2f   Marketing lv %d   Gross $%s/s   Net $%+s/s" % [
-		stock_price, marketing_level,
-		_fmt_money(_stage_4_gross_revenue()),
-		_fmt_money(_stage_4_net_revenue()),
+
+	# STOCK TICKER
+	var stock_spark: String = _make_sparkline(stock_history)
+	var stock_change: float = 0.0
+	if stock_history.size() >= 2:
+		stock_change = stock_history[stock_history.size() - 1] - stock_history[stock_history.size() - 2]
+	var stock_arrow: String = "▲" if stock_change > 0.05 else ("▼" if stock_change < -0.05 else "▬")
+	var shares_rev: float = float(shares_owned) * BUYBACK_REVENUE_PER_SHARE
+	lines.append("📈 STOCK $%6.2f %s%4.1f   %s   shares: %d → +$%.1f/s" % [
+		stock_price, stock_arrow, abs(stock_change), stock_spark,
+		shares_owned, shares_rev,
 	])
-	lines.append("👥  Staff: %d heads   Salary: $%.1f/head/s   Morale: %d%%   Payroll: $%s/s" % [
-		corporate_staff, staff_salary, int(morale * 100.0), _fmt_money(_stage_4_payroll()),
+
+	# COMMODITY TICKERS
+	lines.append("📊 ARABICA $%5.0f %s   ROBUSTA $%5.0f %s   MILK $%5.0f %s" % [
+		arabica_price, _make_sparkline(arabica_history, 14),
+		robusta_price, _make_sparkline(robusta_history, 14),
+		milk_price, _make_sparkline(milk_history, 14),
 	])
-	lines.append("📦  Bulk: %s (×%.2f)   Supplier overhead: $%s/s" % [
-		String(BULK_TIERS[bulk_tier]["name"]),
-		float(BULK_TIERS[bulk_tier]["discount"]),
-		_fmt_money(_stage_4_supplier_overhead()),
+
+	# HR DASHBOARD
+	var req: int = _required_staff()
+	var util: float = _utilization()
+	var util_str: String
+	if util < 0.85:
+		util_str = "⚠ UNDERSTAFFED %d%% — gross ×%.2f" % [int(util * 100.0), util]
+	elif util > 1.4:
+		util_str = "⚠ overstaffed %d%% — paying idle heads" % int(util * 100.0)
+	else:
+		util_str = "✓ %d%% util" % int(util * 100.0)
+	lines.append("👥 HR    Heads %d / need %d   %s" % [corporate_staff, req, util_str])
+	lines.append("        Salary $%.1f/h/s   Morale %d%%   Payroll $%s/s" % [
+		staff_salary, int(morale * 100.0), _fmt_money(_stage_4_payroll()),
+	])
+
+	# OPERATIONS
+	var bulk_info: Dictionary = BULK_TIERS[bulk_tier]
+	lines.append("🏭 OPS   Bulk: %s ×%.2f → supplier $%s/s   Marketing lv %d" % [
+		String(bulk_info["name"]), float(bulk_info["discount"]),
+		_fmt_money(_stage_4_supplier_overhead()), marketing_level,
 	])
 	if cartel_active:
-		lines.append("⚖  Cartel ACTIVE — antitrust risk: %d%%" % int(antitrust_risk * 100.0))
+		lines.append("⚖ CARTEL ACTIVE — antitrust risk %d%% (rising)" % int(antitrust_risk * 100.0))
 	else:
-		lines.append("⚖  Cartel: off (risk decaying: %d%%)" % int(antitrust_risk * 100.0))
+		lines.append("⚖ Cartel off — risk decaying (%d%%)" % int(antitrust_risk * 100.0))
 	if strike_seconds > 0:
-		lines.append("🚨  STRIKE — %ds remaining (no revenue, payroll & overhead still due)" % strike_seconds)
+		lines.append("🚨 STRIKE — %ds remaining (gross = 0, costs continue)" % strike_seconds)
 	if layoff_cooldown > 0:
-		lines.append("⏳  Layoff impact decaying — %ds" % layoff_cooldown)
+		lines.append("⏳ Layoff cooldown — %ds" % layoff_cooldown)
+
+	# NET breakdown
 	lines.append("")
-	lines.append("🎯  Goal: $10M to IPO")
+	lines.append("💰 NET   gross $%s − payroll $%s − supplier $%s = $%+s/s" % [
+		_fmt_money(_stage_4_gross_revenue()),
+		_fmt_money(_stage_4_payroll()),
+		_fmt_money(_stage_4_supplier_overhead()),
+		_fmt_money(_stage_4_net_revenue()),
+	])
+	lines.append("🎯 Goal: $10M to IPO")
 	if won:
 		lines.append("")
-		lines.append("🏆  Corporate Coffee Inc. is public. You won.")
+		lines.append("🏆 Corporate Coffee Inc. is public. You won.")
 	s4_status.text = "\n".join(lines)
 
 
@@ -1138,10 +1257,26 @@ func _on_revenue_tick() -> void:
 				strike_seconds -= 1
 			if layoff_cooldown > 0:
 				layoff_cooldown -= 1
-			var drift: float = randf_range(-2.0, 2.0) + float(marketing_level) * 0.6
+			var drift: float = randf_range(-3.0, 3.0) + float(marketing_level) * 0.4
 			if cartel_active:
-				drift += 1.2
-			stock_price = maxf(stock_price + drift, 1.0)
+				drift += 1.0
+			stock_price = clampf(stock_price + drift, 10.0, 1000.0)
+			stock_history.append(stock_price)
+			if stock_history.size() > HISTORY_LEN:
+				stock_history.pop_front()
+			# Commodity walks
+			arabica_price = clampf(arabica_price + randf_range(-4.0, 4.0), 30.0, 200.0)
+			robusta_price = clampf(robusta_price + randf_range(-3.0, 3.0), 20.0, 150.0)
+			milk_price = clampf(milk_price + randf_range(-2.0, 2.0), 20.0, 100.0)
+			arabica_history.append(arabica_price)
+			robusta_history.append(robusta_price)
+			milk_history.append(milk_price)
+			if arabica_history.size() > HISTORY_LEN:
+				arabica_history.pop_front()
+			if robusta_history.size() > HISTORY_LEN:
+				robusta_history.pop_front()
+			if milk_history.size() > HISTORY_LEN:
+				milk_history.pop_front()
 			# antitrust risk dynamics
 			if cartel_active:
 				antitrust_risk = clampf(antitrust_risk + 0.006, 0.0, 1.0)
