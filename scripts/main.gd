@@ -55,6 +55,21 @@ var locations: Array[Dictionary] = []
 # --- stage 4 (corporate) ---
 var stock_price: float = 100.0
 var marketing_level: int = 0
+var corporate_staff: int = 8
+var staff_salary: float = 25.0  # $/head/s base
+var morale: float = 0.7
+var bulk_tier: int = 0
+var cartel_active: bool = false
+var antitrust_risk: float = 0.0
+var strike_seconds: int = 0
+var layoff_cooldown: int = 0
+
+const BULK_TIERS: Array[Dictionary] = [
+	{"name": "no contracts",    "cost": 0.0,         "discount": 1.00},
+	{"name": "1k contracts",    "cost": 100_000.0,   "discount": 0.85},
+	{"name": "10k contracts",   "cost": 500_000.0,   "discount": 0.65},
+	{"name": "100k contracts",  "cost": 2_000_000.0, "discount": 0.40},
+]
 
 # --- constants ---
 const STAGE_NAMES: Array[String] = [
@@ -122,7 +137,10 @@ var s3_list: VBoxContainer
 var s3_rows: Array[Dictionary] = []  # [{info: Label, cut: Button}]
 var s3_status: Label
 var s4_status: Label
+var cartel_button: Button
+var bulk_button: Button
 var metrics_timer: Timer
+var dev_skip_button: Button
 
 
 func _ready() -> void:
@@ -143,9 +161,16 @@ func _build_root_ui() -> void:
 
 	hud_label = Label.new()
 	hud_label.position = Vector2(20, 8)
-	hud_label.size = Vector2(920, 50)
+	hud_label.size = Vector2(740, 50)
 	hud_label.add_theme_font_size_override("font_size", 14)
 	add_child(hud_label)
+
+	dev_skip_button = Button.new()
+	dev_skip_button.text = "⏭ skip stage (dev)"
+	dev_skip_button.position = Vector2(770, 8)
+	dev_skip_button.size = Vector2(170, 28)
+	dev_skip_button.pressed.connect(_dev_skip_stage)
+	add_child(dev_skip_button)
 
 	notif_label = Label.new()
 	notif_label.position = Vector2(20, 60)
@@ -199,6 +224,8 @@ func _enter_stage(s: int) -> void:
 	s3_rows.clear()
 	s3_status = null
 	s4_status = null
+	cartel_button = null
+	bulk_button = null
 	spawn_timer.stop()
 	revenue_timer.stop()
 
@@ -227,6 +254,18 @@ func _on_metrics_tick() -> void:
 	current_rate = money - money_last_tick
 	money_last_tick = money
 	_refresh_hud()
+
+
+func _dev_skip_stage() -> void:
+	if stage >= 4:
+		money += 1_000_000.0
+		_notify("[dev] +$1M for stage 4 testing.")
+		_refresh_stage_4_ui()
+		_refresh_hud()
+		return
+	# fast-forward: bump money to comfortably enter the next stage
+	money = maxf(money, STAGE_GOALS[stage] + 100.0)
+	_enter_stage(stage + 1)
 
 
 func _notify(msg: String) -> void:
@@ -736,28 +775,38 @@ func _refresh_stage_3_ui() -> void:
 #  STAGE 4 — Corporate CEO
 # ============================================================
 func _setup_stage_4() -> void:
-	_stage_title("💼  Corporate CEO — reach $10M to take Corporate Coffee public")
+	_stage_title("💼  Corporate CEO — payroll, suppliers, cartels. Reach $10M to IPO.")
 
 	var blurb: Label = Label.new()
-	blurb.text = "Stock price drifts each second. Marketing tilts the drift positive. Buyback boosts price."
-	blurb.position = Vector2(20, 50)
-	blurb.size = Vector2(920, 28)
+	blurb.text = "Holding company. Manage staff, negotiate wages, get bulk discounts, optionally form a cartel (risky)."
+	blurb.position = Vector2(20, 36)
+	blurb.size = Vector2(920, 22)
 	blurb.modulate = STAGE_FG[4]
+	blurb.add_theme_font_size_override("font_size", 12)
 	stage_view.add_child(blurb)
 
-	_make_stage_button("Marketing campaign — $1k", Vector2(20, 100), _buy_marketing)
-	_make_stage_button("Stock buyback — $5k", Vector2(260, 100), _buy_stock)
+	# Row 1 — capital actions
+	_make_stage_button("Marketing — $1k", Vector2(20, 66), _buy_marketing, Vector2(220, 42))
+	_make_stage_button("Buyback — $5k", Vector2(250, 66), _buy_stock, Vector2(220, 42))
+	cartel_button = _make_stage_button("Form cartel", Vector2(480, 66), _toggle_cartel, Vector2(220, 42))
+	_make_stage_button("Layoff round", Vector2(710, 66), _layoff_round, Vector2(220, 42))
+
+	# Row 2 — HR & sourcing
+	_make_stage_button("Hire 5 corp — $1k", Vector2(20, 116), _hire_corporate, Vector2(220, 42))
+	_make_stage_button("Raise wages +10%", Vector2(250, 116), _raise_wages, Vector2(220, 42))
+	_make_stage_button("Cut wages −10%", Vector2(480, 116), _cut_wages, Vector2(220, 42))
+	bulk_button = _make_stage_button("Bulk", Vector2(710, 116), _buy_bulk_tier, Vector2(220, 42))
 
 	s4_status = Label.new()
-	s4_status.position = Vector2(20, 180)
+	s4_status.position = Vector2(20, 175)
 	s4_status.size = Vector2(920, 280)
 	s4_status.modulate = STAGE_FG[4]
-	s4_status.add_theme_font_size_override("font_size", 16)
+	s4_status.add_theme_font_size_override("font_size", 14)
 	stage_view.add_child(s4_status)
 
 	revenue_timer.wait_time = 1.0
 	revenue_timer.start()
-	_update_s4_status()
+	_refresh_stage_4_ui()
 
 
 func _buy_marketing() -> void:
@@ -766,8 +815,8 @@ func _buy_marketing() -> void:
 		return
 	money -= 1000.0
 	marketing_level += 1
+	_refresh_stage_4_ui()
 	_refresh_hud()
-	_update_s4_status()
 
 
 func _buy_stock() -> void:
@@ -776,19 +825,158 @@ func _buy_stock() -> void:
 		return
 	money -= 5000.0
 	stock_price += 5.0
+	_refresh_stage_4_ui()
 	_refresh_hud()
-	_update_s4_status()
 
 
-func _update_s4_status() -> void:
+func _hire_corporate() -> void:
+	if money < 1000.0:
+		_notify("Need $1000 to hire 5 corporate staff.")
+		return
+	money -= 1000.0
+	corporate_staff += 5
+	morale = clampf(morale + 0.05, 0.0, 1.0)
+	_notify("+5 corporate staff hired.")
+	_refresh_stage_4_ui()
+	_refresh_hud()
+
+
+func _raise_wages() -> void:
+	staff_salary *= 1.10
+	morale = clampf(morale + 0.10, 0.0, 1.0)
+	_notify("Wages raised 10%. Morale up.")
+	_refresh_stage_4_ui()
+	_refresh_hud()
+
+
+func _cut_wages() -> void:
+	staff_salary = maxf(staff_salary * 0.90, 5.0)
+	morale = clampf(morale - 0.15, 0.0, 1.0)
+	if morale < 0.30 and randf() < 0.5 and strike_seconds == 0:
+		strike_seconds = 30
+		_notify("⚠  STRIKE — staff walked out. No income for 30s.")
+	else:
+		_notify("Wages cut 10%. Morale dropped.")
+	_refresh_stage_4_ui()
+	_refresh_hud()
+
+
+func _layoff_round() -> void:
+	if corporate_staff <= 2:
+		_notify("Staff already minimal — can't lay off more.")
+		return
+	if layoff_cooldown > 0:
+		_notify("Last layoff impact still settling — wait %ds." % layoff_cooldown)
+		return
+	var cut_count: int = maxi(int(float(corporate_staff) * 0.30), 1)
+	var severance: float = float(cut_count) * staff_salary * 5.0
+	if money < severance:
+		_notify("Need $%s for severance." % _fmt_money(severance))
+		return
+	money -= severance
+	corporate_staff -= cut_count
+	morale = clampf(morale - 0.20, 0.0, 1.0)
+	layoff_cooldown = 60
+	_notify("Laid off %d. Severance $%s. Morale −20." % [cut_count, _fmt_money(severance)])
+	_refresh_stage_4_ui()
+	_refresh_hud()
+
+
+func _toggle_cartel() -> void:
+	cartel_active = not cartel_active
+	if cartel_active:
+		_notify("⚠  Cartel formed — revenue ×2, antitrust risk rising.")
+	else:
+		_notify("Cartel dissolved. Risk decays.")
+	_refresh_stage_4_ui()
+
+
+func _buy_bulk_tier() -> void:
+	var next_tier: int = bulk_tier + 1
+	if next_tier >= BULK_TIERS.size():
+		_notify("Already at the top bulk tier.")
+		return
+	var cost: float = float(BULK_TIERS[next_tier]["cost"])
+	if money < cost:
+		_notify("Need $%s for %s." % [_fmt_money(cost), String(BULK_TIERS[next_tier]["name"])])
+		return
+	money -= cost
+	bulk_tier = next_tier
+	_notify("Upgraded to %s — supplier overhead × %.2f." % [
+		String(BULK_TIERS[bulk_tier]["name"]), float(BULK_TIERS[bulk_tier]["discount"]),
+	])
+	_refresh_stage_4_ui()
+	_refresh_hud()
+
+
+func _stage_4_payroll() -> float:
+	# low morale increases cost (overtime, replacements)
+	var morale_factor: float = 1.0 + maxf(0.0, 0.7 - morale) * 0.6
+	return float(corporate_staff) * staff_salary * morale_factor
+
+
+func _stage_4_supplier_overhead() -> float:
+	# overhead scales with chain size, reduced by bulk tier
+	var base: float = 50.0 + float(locations.size()) * 30.0
+	return base * float(BULK_TIERS[bulk_tier]["discount"])
+
+
+func _stage_4_gross_revenue() -> float:
+	if strike_seconds > 0:
+		return 0.0
+	var marketing_boost: float = 1.0 + float(marketing_level) * 0.15
+	var cartel_mult: float = 2.0 if cartel_active else 1.0
+	return stock_price * 100.0 * marketing_boost * cartel_mult
+
+
+func _stage_4_net_revenue() -> float:
+	return _stage_4_gross_revenue() - _stage_4_payroll() - _stage_4_supplier_overhead()
+
+
+func _refresh_stage_4_ui() -> void:
+	if cartel_button != null:
+		cartel_button.text = "Break cartel" if cartel_active else "Form cartel"
+	if bulk_button != null:
+		var nt: int = bulk_tier + 1
+		if nt < BULK_TIERS.size():
+			bulk_button.text = "Buy %s — $%s" % [
+				String(BULK_TIERS[nt]["name"]),
+				_fmt_money(float(BULK_TIERS[nt]["cost"])),
+			]
+			bulk_button.disabled = false
+		else:
+			bulk_button.text = "Bulk maxed (×0.40)"
+			bulk_button.disabled = true
 	if s4_status == null:
 		return
-	var rev_per_sec: float = stock_price * 100.0
-	s4_status.text = "Stock price:     $%.2f\nMarketing level: %d\nRevenue:         $%s / sec\n\nGoal: $10M" % [
-		stock_price, marketing_level, _fmt_money(rev_per_sec),
-	]
+	var lines: Array[String] = []
+	lines.append("📈  Stock $%.2f   Marketing lv %d   Gross $%s/s   Net $%+s/s" % [
+		stock_price, marketing_level,
+		_fmt_money(_stage_4_gross_revenue()),
+		_fmt_money(_stage_4_net_revenue()),
+	])
+	lines.append("👥  Staff: %d heads   Salary: $%.1f/head/s   Morale: %d%%   Payroll: $%s/s" % [
+		corporate_staff, staff_salary, int(morale * 100.0), _fmt_money(_stage_4_payroll()),
+	])
+	lines.append("📦  Bulk: %s (×%.2f)   Supplier overhead: $%s/s" % [
+		String(BULK_TIERS[bulk_tier]["name"]),
+		float(BULK_TIERS[bulk_tier]["discount"]),
+		_fmt_money(_stage_4_supplier_overhead()),
+	])
+	if cartel_active:
+		lines.append("⚖  Cartel ACTIVE — antitrust risk: %d%%" % int(antitrust_risk * 100.0))
+	else:
+		lines.append("⚖  Cartel: off (risk decaying: %d%%)" % int(antitrust_risk * 100.0))
+	if strike_seconds > 0:
+		lines.append("🚨  STRIKE — %ds remaining (no revenue, payroll & overhead still due)" % strike_seconds)
+	if layoff_cooldown > 0:
+		lines.append("⏳  Layoff impact decaying — %ds" % layoff_cooldown)
+	lines.append("")
+	lines.append("🎯  Goal: $10M to IPO")
 	if won:
-		s4_status.text += "\n\n🏆  Corporate Coffee Inc. — IPO complete. You won."
+		lines.append("")
+		lines.append("🏆  Corporate Coffee Inc. is public. You won.")
+	s4_status.text = "\n".join(lines)
 
 
 # ============================================================
@@ -816,11 +1004,30 @@ func _on_revenue_tick() -> void:
 			money += total_rev - total_cost
 			_refresh_stage_3_ui()
 		4:
+			if strike_seconds > 0:
+				strike_seconds -= 1
+			if layoff_cooldown > 0:
+				layoff_cooldown -= 1
 			var drift: float = randf_range(-2.0, 2.0) + float(marketing_level) * 0.6
+			if cartel_active:
+				drift += 1.2
 			stock_price = maxf(stock_price + drift, 1.0)
-			money += stock_price * 100.0
+			# antitrust risk dynamics
+			if cartel_active:
+				antitrust_risk = clampf(antitrust_risk + 0.006, 0.0, 1.0)
+				if randf() < antitrust_risk * 0.025:
+					var fine: float = 1_000_000.0 + stock_price * 100.0
+					money -= fine
+					cartel_active = false
+					antitrust_risk = 0.0
+					_notify("⚖  ANTITRUST FINE — $%s. Cartel busted." % _fmt_money(fine))
+			else:
+				antitrust_risk = clampf(antitrust_risk - 0.012, 0.0, 1.0)
+			# slow morale recovery
+			morale = clampf(morale + 0.005, 0.0, 1.0)
+			money += _stage_4_net_revenue()
 			_check_win()
-			_update_s4_status()
+			_refresh_stage_4_ui()
 	_refresh_hud()
 
 

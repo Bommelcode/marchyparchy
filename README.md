@@ -7,7 +7,9 @@ A career-ladder coffee tycoon built in [Godot 4](https://godotengine.org/). Clim
 1. **Office Coffee Juffrouw** — colleagues come asking for coffee. Click them, then click the green zone of the brewing bar at the right moment for a perfect cup. Bad cups → colleagues defect and bring their own pod machine. Goal: **$200**.
 2. **Café Owner** — your own café. Hire baristas, raise prices. *(Bean sourcing & espresso machine maintenance coming next.)* Goal: **$2k**.
 3. **Chain CEO** — open locations across the city. Each has gross revenue and operating cost. Hire managers (2× revenue, 1.5× cost) and apply cost cuts (−40% ops, −8% traffic per cut, diminishing returns). Goal: **$100k**.
-4. **Corporate CEO** — IPO time. Run marketing campaigns and stock buybacks. Goal: **$10M to win**.
+4. **Corporate CEO** — IPO time. Manage corporate staff (payroll, hire, layoff rounds with severance). Negotiate wages (raise/cut, with morale and strike risk). Buy bulk-purchasing tiers (1k → 100k contracts) to slash supplier overhead. Form a cartel for ×2 revenue and rising antitrust risk. Plus marketing campaigns and stock buybacks. Goal: **$10M to win**.
+
+A dev "⏭ skip stage" button is in the top right while iterating — bumps your balance and jumps to the next stage.
 
 ## Run
 
