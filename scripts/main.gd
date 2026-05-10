@@ -54,6 +54,9 @@ var locations: Array[Dictionary] = []
 const PROMO_DRAIN_BASE: float = 0.015     # per second, no manager
 const PROMO_DRAIN_MANAGED: float = 0.008  # per second, with manager
 const MANAGER_SALARY: float = 5.0         # $/sec ongoing
+const MAX_TRAINING: int = 3
+const TRAINING_DRAIN_MULT: float = 0.70   # each level multiplies drain by this
+const TRAINING_COSTS: Array[float] = [300.0, 600.0, 1200.0]  # cost for level 1, 2, 3
 
 # --- stage 4 (corporate) ---
 var stock_price: float = 100.0
@@ -681,6 +684,7 @@ func _buy_location() -> void:
 		"base_revenue": base_rev,
 		"manager": false,
 		"promotion": 1.0,
+		"training": 0,
 	})
 	_refresh_stage_3_ui()
 	_refresh_hud()
@@ -710,6 +714,30 @@ func _visit_location(idx: int) -> void:
 	_refresh_hud()
 
 
+func _train_manager(idx: int) -> void:
+	if idx < 0 or idx >= locations.size():
+		return
+	var loc: Dictionary = locations[idx]
+	if not bool(loc.get("manager", false)):
+		_notify("%s has no manager to train." % String(loc.get("name", "?")))
+		return
+	var current: int = int(loc.get("training", 0))
+	if current >= MAX_TRAINING:
+		_notify("%s manager already maxed out." % String(loc.get("name", "?")))
+		return
+	var cost: float = TRAINING_COSTS[current]
+	if money < cost:
+		_notify("Need $%s to train next level." % _fmt_money(cost))
+		return
+	money -= cost
+	loc["training"] = current + 1
+	_notify("%s manager trained to level %d — drain × %.2f." % [
+		String(loc.get("name", "?")), current + 1, pow(TRAINING_DRAIN_MULT, float(current + 1)),
+	])
+	_refresh_stage_3_ui()
+	_refresh_hud()
+
+
 func _location_gross_revenue(loc: Dictionary) -> float:
 	var base: float = float(loc.get("base_revenue", 0.0))
 	var mgr_mult: float = 2.0 if bool(loc.get("manager", false)) else 1.0
@@ -725,7 +753,13 @@ func _location_net_revenue(loc: Dictionary) -> float:
 
 func _format_location_row(loc: Dictionary) -> String:
 	var net: float = _location_net_revenue(loc)
-	var mgr_str: String = "👔" if bool(loc.get("manager", false)) else "·  "
+	var has_mgr: bool = bool(loc.get("manager", false))
+	var training: int = int(loc.get("training", 0))
+	var mgr_str: String
+	if has_mgr:
+		mgr_str = "👔" + "★".repeat(training) if training > 0 else "👔"
+	else:
+		mgr_str = "·  "
 	return "%s  %s   $%+5.1f/s net" % [
 		mgr_str, String(loc.get("name", "?")), net,
 	]
@@ -735,32 +769,39 @@ func _add_s3_row(idx: int) -> void:
 	if s3_list == null:
 		return
 	var row: HBoxContainer = HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
+	row.add_theme_constant_override("separation", 8)
 
 	var info: Label = Label.new()
-	info.size = Vector2(280, 28)
-	info.custom_minimum_size = Vector2(280, 28)
+	info.size = Vector2(240, 28)
+	info.custom_minimum_size = Vector2(240, 28)
 	info.modulate = STAGE_FG[3]
 	info.add_theme_font_size_override("font_size", 13)
 	row.add_child(info)
 
 	var bar: ProgressBar = ProgressBar.new()
-	bar.size = Vector2(380, 24)
-	bar.custom_minimum_size = Vector2(380, 24)
+	bar.size = Vector2(330, 24)
+	bar.custom_minimum_size = Vector2(330, 24)
 	bar.min_value = 0.0
 	bar.max_value = 1.0
 	bar.show_percentage = true
 	row.add_child(bar)
 
 	var visit_btn: Button = Button.new()
-	visit_btn.text = "Visit & promote"
-	visit_btn.size = Vector2(160, 26)
-	visit_btn.custom_minimum_size = Vector2(160, 26)
+	visit_btn.text = "Visit"
+	visit_btn.size = Vector2(110, 26)
+	visit_btn.custom_minimum_size = Vector2(110, 26)
 	visit_btn.pressed.connect(_visit_location.bind(idx))
 	row.add_child(visit_btn)
 
+	var train_btn: Button = Button.new()
+	train_btn.text = "Train"
+	train_btn.size = Vector2(150, 26)
+	train_btn.custom_minimum_size = Vector2(150, 26)
+	train_btn.pressed.connect(_train_manager.bind(idx))
+	row.add_child(train_btn)
+
 	s3_list.add_child(row)
-	s3_rows.append({"info": info, "promo": bar, "visit": visit_btn})
+	s3_rows.append({"info": info, "promo": bar, "visit": visit_btn, "train": train_btn})
 
 
 func _refresh_stage_3_ui() -> void:
@@ -773,6 +814,18 @@ func _refresh_stage_3_ui() -> void:
 		var loc: Dictionary = locations[i]
 		(row["info"] as Label).text = _format_location_row(loc)
 		(row["promo"] as ProgressBar).value = float(loc.get("promotion", 0.0))
+		var train_btn: Button = row["train"]
+		var has_mgr: bool = bool(loc.get("manager", false))
+		var training: int = int(loc.get("training", 0))
+		if not has_mgr:
+			train_btn.text = "Train (no mgr)"
+			train_btn.disabled = true
+		elif training >= MAX_TRAINING:
+			train_btn.text = "★★★ maxed"
+			train_btn.disabled = true
+		else:
+			train_btn.text = "Train L%d $%s" % [training + 1, _fmt_money(TRAINING_COSTS[training])]
+			train_btn.disabled = false
 	if s3_status != null:
 		var total_net: float = 0.0
 		var mgrs: int = 0
@@ -1022,7 +1075,9 @@ func _on_revenue_tick() -> void:
 			var total_gross: float = 0.0
 			for loc in locations:
 				var managed: bool = bool(loc.get("manager", false))
-				var drain: float = PROMO_DRAIN_MANAGED if managed else PROMO_DRAIN_BASE
+				var base_drain: float = PROMO_DRAIN_MANAGED if managed else PROMO_DRAIN_BASE
+				var training: int = int(loc.get("training", 0))
+				var drain: float = base_drain * pow(TRAINING_DRAIN_MULT, float(training))
 				loc["promotion"] = clampf(float(loc.get("promotion", 0.0)) - drain, 0.0, 1.0)
 				total_net += _location_net_revenue(loc)
 				total_gross += _location_gross_revenue(loc)
