@@ -158,6 +158,14 @@ var s4_status: Label
 var cartel_button: Button
 var bulk_button: Button
 var buyback_button: Button
+var stock_chart_title: Label
+var stock_chart: Control
+var arabica_chart_title: Label
+var arabica_chart: Control
+var robusta_chart_title: Label
+var robusta_chart: Control
+var milk_chart_title: Label
+var milk_chart: Control
 var metrics_timer: Timer
 var dev_skip_button: Button
 
@@ -263,6 +271,14 @@ func _enter_stage(s: int) -> void:
 	cartel_button = null
 	bulk_button = null
 	buyback_button = null
+	stock_chart_title = null
+	stock_chart = null
+	arabica_chart_title = null
+	arabica_chart = null
+	robusta_chart_title = null
+	robusta_chart = null
+	milk_chart_title = null
+	milk_chart = null
 	spawn_timer.stop()
 	revenue_timer.stop()
 
@@ -927,9 +943,27 @@ func _setup_stage_4() -> void:
 	_make_stage_button("Cut wages −10%", Vector2(480, 116), _cut_wages, Vector2(220, 42))
 	bulk_button = _make_stage_button("Bulk", Vector2(710, 116), _buy_bulk_tier, Vector2(220, 42))
 
+	# charts
+	var stock_color: Color = Color(0.45, 0.85, 0.55)
+	var ar_color: Color = Color(0.95, 0.78, 0.45)
+	var ro_color: Color = Color(0.85, 0.65, 0.40)
+	var mi_color: Color = Color(0.80, 0.92, 0.95)
+	var stock_panel: Dictionary = _make_chart_panel(Vector2(20, 168), Vector2(430, 100), stock_color)
+	stock_chart_title = stock_panel["title"]
+	stock_chart = stock_panel["chart"]
+	var ar_panel: Dictionary = _make_chart_panel(Vector2(470, 168), Vector2(150, 100), ar_color)
+	arabica_chart_title = ar_panel["title"]
+	arabica_chart = ar_panel["chart"]
+	var ro_panel: Dictionary = _make_chart_panel(Vector2(630, 168), Vector2(150, 100), ro_color)
+	robusta_chart_title = ro_panel["title"]
+	robusta_chart = ro_panel["chart"]
+	var mi_panel: Dictionary = _make_chart_panel(Vector2(790, 168), Vector2(150, 100), mi_color)
+	milk_chart_title = mi_panel["title"]
+	milk_chart = mi_panel["chart"]
+
 	s4_status = Label.new()
-	s4_status.position = Vector2(20, 170)
-	s4_status.size = Vector2(920, 290)
+	s4_status.position = Vector2(20, 285)
+	s4_status.size = Vector2(920, 175)
 	s4_status.modulate = STAGE_FG[4]
 	s4_status.add_theme_font_size_override("font_size", 13)
 	stage_view.add_child(s4_status)
@@ -1125,51 +1159,54 @@ func _stage_4_net_revenue() -> float:
 
 
 func _refresh_stage_4_ui() -> void:
-	# update buttons
+	# buttons
 	if cartel_button != null:
 		cartel_button.text = "Break cartel" if cartel_active else "Form cartel"
 	if buyback_button != null:
 		var bb_cost: float = float(BUYBACK_BLOCK_SHARES) * stock_price
-		buyback_button.text = "Buy %d sh @ $%.2f → $%s" % [
-			BUYBACK_BLOCK_SHARES, stock_price, _fmt_money(bb_cost),
-		]
+		buyback_button.text = "Buy 100 sh — $%s" % _fmt_money(bb_cost)
 	if bulk_button != null:
 		var nt: int = bulk_tier + 1
 		if nt < BULK_TIERS.size():
-			bulk_button.text = "Lock %s — $%s (arabica $%.0f)" % [
+			bulk_button.text = "Lock %s — $%s" % [
 				String(BULK_TIERS[nt]["name"]),
 				_fmt_money(_bulk_cost(nt)),
-				arabica_price,
 			]
 			bulk_button.disabled = false
 		else:
 			bulk_button.text = "Bulk maxed (×0.40)"
 			bulk_button.disabled = true
-	if s4_status == null:
-		return
 
-	var lines: Array[String] = []
-
-	# STOCK TICKER
-	var stock_spark: String = _make_sparkline(stock_history)
+	# chart titles + data
 	var stock_change: float = 0.0
 	if stock_history.size() >= 2:
 		stock_change = stock_history[stock_history.size() - 1] - stock_history[stock_history.size() - 2]
 	var stock_arrow: String = "▲" if stock_change > 0.05 else ("▼" if stock_change < -0.05 else "▬")
-	var shares_rev: float = float(shares_owned) * BUYBACK_REVENUE_PER_SHARE
-	lines.append("📈 STOCK $%6.2f %s%4.1f   %s   shares: %d → +$%.1f/s" % [
-		stock_price, stock_arrow, abs(stock_change), stock_spark,
-		shares_owned, shares_rev,
-	])
+	if stock_chart_title != null:
+		stock_chart_title.text = "📈 STOCK $%.2f %s%.1f   shares %d → +$%.1f/s" % [
+			stock_price, stock_arrow, abs(stock_change),
+			shares_owned, float(shares_owned) * BUYBACK_REVENUE_PER_SHARE,
+		]
+	if stock_chart != null:
+		stock_chart.set_values(stock_history)
+	if arabica_chart_title != null:
+		arabica_chart_title.text = "ARABICA $%.0f" % arabica_price
+	if arabica_chart != null:
+		arabica_chart.set_values(arabica_history)
+	if robusta_chart_title != null:
+		robusta_chart_title.text = "ROBUSTA $%.0f" % robusta_price
+	if robusta_chart != null:
+		robusta_chart.set_values(robusta_history)
+	if milk_chart_title != null:
+		milk_chart_title.text = "MILK $%.0f" % milk_price
+	if milk_chart != null:
+		milk_chart.set_values(milk_history)
 
-	# COMMODITY TICKERS
-	lines.append("📊 ARABICA $%5.0f %s   ROBUSTA $%5.0f %s   MILK $%5.0f %s" % [
-		arabica_price, _make_sparkline(arabica_history, 14),
-		robusta_price, _make_sparkline(robusta_history, 14),
-		milk_price, _make_sparkline(milk_history, 14),
-	])
+	if s4_status == null:
+		return
 
-	# HR DASHBOARD
+	# Status text — HR + ops + cartel + net (tickers are in charts above)
+	var lines: Array[String] = []
 	var req: int = _required_staff()
 	var util: float = _utilization()
 	var util_str: String
@@ -1183,8 +1220,6 @@ func _refresh_stage_4_ui() -> void:
 	lines.append("        Salary $%.1f/h/s   Morale %d%%   Payroll $%s/s" % [
 		staff_salary, int(morale * 100.0), _fmt_money(_stage_4_payroll()),
 	])
-
-	# OPERATIONS
 	var bulk_info: Dictionary = BULK_TIERS[bulk_tier]
 	lines.append("🏭 OPS   Bulk: %s ×%.2f → supplier $%s/s   Marketing lv %d" % [
 		String(bulk_info["name"]), float(bulk_info["discount"]),
@@ -1198,8 +1233,6 @@ func _refresh_stage_4_ui() -> void:
 		lines.append("🚨 STRIKE — %ds remaining (gross = 0, costs continue)" % strike_seconds)
 	if layoff_cooldown > 0:
 		lines.append("⏳ Layoff cooldown — %ds" % layoff_cooldown)
-
-	# NET breakdown
 	lines.append("")
 	lines.append("💰 NET   gross $%s − payroll $%s − supplier $%s = $%+s/s" % [
 		_fmt_money(_stage_4_gross_revenue()),
@@ -1212,6 +1245,24 @@ func _refresh_stage_4_ui() -> void:
 		lines.append("")
 		lines.append("🏆 Corporate Coffee Inc. is public. You won.")
 	s4_status.text = "\n".join(lines)
+
+
+func _make_chart_panel(pos: Vector2, sz: Vector2, color: Color) -> Dictionary:
+	var title: Label = Label.new()
+	title.position = pos
+	title.size = Vector2(sz.x, 18)
+	title.modulate = color
+	title.add_theme_font_size_override("font_size", 11)
+	stage_view.add_child(title)
+	var chart: LineChart = LineChart.new()
+	chart.position = pos + Vector2(0, 22)
+	chart.size = Vector2(sz.x, sz.y - 22)
+	chart.line_color = color
+	chart.fill_color = Color(color.r, color.g, color.b, 0.22)
+	chart.bg_color = Color(0.0, 0.0, 0.0, 0.18)
+	chart.border_color = Color(color.r, color.g, color.b, 0.45)
+	stage_view.add_child(chart)
+	return {"title": title, "chart": chart}
 
 
 # ============================================================
@@ -1521,3 +1572,63 @@ class BrewBar extends Control:
 		# indicator
 		var ix: float = bar_x + progress * bar_w
 		draw_line(Vector2(ix, bar_top - 2), Vector2(ix, bar_top + bar_h + 2), Color(0.15, 0.08, 0.05), 3.0)
+
+
+# ============================================================
+#  LINE CHART WIDGET
+# ============================================================
+class LineChart extends Control:
+	var values: Array = []
+	var line_color: Color = Color.BLACK
+	var fill_color: Color = Color(0.0, 0.0, 0.0, 0.15)
+	var bg_color: Color = Color(1.0, 1.0, 1.0, 0.06)
+	var border_color: Color = Color(1.0, 1.0, 1.0, 0.3)
+	var min_y: float = 0.0
+	var max_y: float = 1.0
+	var auto_scale: bool = true
+
+	func set_values(v: Array) -> void:
+		values = v.duplicate()
+		if auto_scale and values.size() > 0:
+			var lo: float = INF
+			var hi: float = -INF
+			for x in values:
+				var f: float = float(x)
+				if f < lo:
+					lo = f
+				if f > hi:
+					hi = f
+			if hi - lo < 0.01:
+				hi = lo + 1.0
+			# small padding so the line isn't flush against borders
+			var pad: float = (hi - lo) * 0.1
+			min_y = lo - pad
+			max_y = hi + pad
+		queue_redraw()
+
+	func _draw() -> void:
+		var w: float = size.x
+		var h: float = size.y
+		draw_rect(Rect2(Vector2.ZERO, size), bg_color)
+		draw_rect(Rect2(Vector2.ZERO, size), border_color, false, 1.0)
+		if values.size() < 2:
+			return
+		var rng: float = max_y - min_y
+		if rng < 0.01:
+			rng = 1.0
+		var n: int = values.size()
+		var pts: PackedVector2Array = PackedVector2Array()
+		for i in range(n):
+			var x: float = float(i) / float(n - 1) * (w - 4.0) + 2.0
+			var y: float = h - 2.0 - (float(values[i]) - min_y) / rng * (h - 4.0)
+			pts.append(Vector2(x, y))
+		# fill under the line
+		var fill_pts: PackedVector2Array = PackedVector2Array()
+		fill_pts.append(Vector2(2.0, h - 2.0))
+		for p in pts:
+			fill_pts.append(p)
+		fill_pts.append(Vector2(w - 2.0, h - 2.0))
+		draw_colored_polygon(fill_pts, fill_color)
+		# the line itself
+		for i in range(n - 1):
+			draw_line(pts[i], pts[i + 1], line_color, 2.0)
