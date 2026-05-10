@@ -148,6 +148,15 @@ var bulk_button: Button
 var metrics_timer: Timer
 var dev_skip_button: Button
 
+# --- audio (synthesized at startup) ---
+const SR: int = 22050
+var sfx_brew_start: AudioStreamPlayer
+var sfx_perfect: AudioStreamPlayer
+var sfx_good: AudioStreamPlayer
+var sfx_mediocre: AudioStreamPlayer
+var sfx_burnt: AudioStreamPlayer
+var sfx_defect: AudioStreamPlayer
+
 
 func _ready() -> void:
 	randomize()
@@ -204,6 +213,14 @@ func _build_root_ui() -> void:
 	metrics_timer.autostart = true
 	metrics_timer.timeout.connect(_on_metrics_tick)
 	add_child(metrics_timer)
+
+	# audio
+	sfx_brew_start = _make_sfx(_synth_tone(700.0, 0.08, 0.45))
+	sfx_perfect = _make_sfx(_synth_chime(880.0, 1320.0, 0.45, 0.55))
+	sfx_good = _make_sfx(_synth_tone(660.0, 0.15, 0.45))
+	sfx_mediocre = _make_sfx(_synth_tone(440.0, 0.20, 0.40))
+	sfx_burnt = _make_sfx(_synth_buzz(180.0, 0.50, 0.50))
+	sfx_defect = _make_sfx(_synth_descend(440.0, 220.0, 0.60, 0.45))
 
 
 func _enter_stage(s: int) -> void:
@@ -388,6 +405,8 @@ func _start_brew(entry: Dictionary) -> void:
 	milk -= need_milk
 	_update_s1_labels()
 	_refresh_hud()
+	if sfx_brew_start != null:
+		sfx_brew_start.play()
 
 	var bar: BrewBar = BrewBar.new()
 	bar.label_text = "🧑 %s\nclick green!" % String(drink["emoji"])
@@ -416,23 +435,31 @@ func _brew_finished(grade: String, entry: Dictionary, bar: BrewBar) -> void:
 			q_delta = 0.05
 			total_perfect += 1.0
 			msg = "✨ Perfect %s — $%d (incl. tip)" % [String(drink["name"]), int(revenue)]
+			if sfx_perfect != null:
+				sfx_perfect.play()
 		"good":
 			revenue = float(base_price) + float(max_tip) * 0.6
 			q_delta = 0.01
 			total_good += 1.0
 			msg = "👍 Decent %s — $%d" % [String(drink["name"]), int(revenue)]
+			if sfx_good != null:
+				sfx_good.play()
 		"mediocre":
 			revenue = float(base_price) * 0.5
 			q_delta = -0.04
 			defect_chance = 0.10
 			total_mediocre += 1.0
 			msg = "😐 Meh %s — $%d (no tip)" % [String(drink["name"]), int(revenue)]
+			if sfx_mediocre != null:
+				sfx_mediocre.play()
 		_:  # "burnt"
 			revenue = 0.0
 			q_delta = -0.08
 			defect_chance = 0.30
 			total_burnt += 1.0
 			msg = "🔥 Burnt the %s — refund." % String(drink["name"])
+			if sfx_burnt != null:
+				sfx_burnt.play()
 	money += revenue
 	customers_served += 1.0
 	quality = clampf(quality + q_delta, 0.0, 1.0)
@@ -440,6 +467,8 @@ func _brew_finished(grade: String, entry: Dictionary, bar: BrewBar) -> void:
 	if defect_chance > 0.0 and randf() < defect_chance and defected < OFFICE_SIZE:
 		defected += 1
 		msg += "  💔 colleague brought their own pod machine."
+		if sfx_defect != null:
+			sfx_defect.play()
 	queue.erase(entry)
 	bar.queue_free()
 	_notify(msg)
@@ -1159,6 +1188,81 @@ func _make_stage_label(pos: Vector2) -> Label:
 	return l
 
 
+func _make_sfx(stream: AudioStreamWAV) -> AudioStreamPlayer:
+	var p: AudioStreamPlayer = AudioStreamPlayer.new()
+	p.stream = stream
+	add_child(p)
+	return p
+
+
+func _put_sample(data: PackedByteArray, idx: int, sample: float) -> void:
+	var s16: int = clampi(int(sample * 32767.0), -32768, 32767)
+	if s16 < 0:
+		s16 += 65536
+	data[idx * 2] = s16 & 0xFF
+	data[idx * 2 + 1] = (s16 >> 8) & 0xFF
+
+
+func _wrap_stream(data: PackedByteArray) -> AudioStreamWAV:
+	var s: AudioStreamWAV = AudioStreamWAV.new()
+	s.format = AudioStreamWAV.FORMAT_16_BITS
+	s.mix_rate = SR
+	s.stereo = false
+	s.data = data
+	return s
+
+
+func _synth_tone(freq: float, duration: float, volume: float) -> AudioStreamWAV:
+	var n: int = int(duration * float(SR))
+	var data: PackedByteArray = PackedByteArray()
+	data.resize(n * 2)
+	for i in range(n):
+		var t: float = float(i) / float(SR)
+		var env: float = minf(t * 30.0, 1.0) * exp(-t * 4.0)
+		_put_sample(data, i, sin(t * freq * TAU) * env * volume)
+	return _wrap_stream(data)
+
+
+func _synth_chime(f1: float, f2: float, duration: float, volume: float) -> AudioStreamWAV:
+	var n: int = int(duration * float(SR))
+	var data: PackedByteArray = PackedByteArray()
+	data.resize(n * 2)
+	for i in range(n):
+		var t: float = float(i) / float(SR)
+		var env: float = minf(t * 30.0, 1.0) * exp(-t * 2.5)
+		var s: float = (sin(t * f1 * TAU) + sin(t * f2 * TAU)) * 0.5
+		_put_sample(data, i, s * env * volume)
+	return _wrap_stream(data)
+
+
+func _synth_buzz(freq: float, duration: float, volume: float) -> AudioStreamWAV:
+	var n: int = int(duration * float(SR))
+	var data: PackedByteArray = PackedByteArray()
+	data.resize(n * 2)
+	for i in range(n):
+		var t: float = float(i) / float(SR)
+		var env: float = minf(t * 20.0, 1.0) * exp(-t * 2.0)
+		var sq: float = 1.0 if sin(t * freq * TAU) > 0.0 else -1.0
+		var noise: float = randf_range(-0.35, 0.35)
+		_put_sample(data, i, (sq * 0.6 + noise) * env * volume)
+	return _wrap_stream(data)
+
+
+func _synth_descend(f_start: float, f_end: float, duration: float, volume: float) -> AudioStreamWAV:
+	var n: int = int(duration * float(SR))
+	var data: PackedByteArray = PackedByteArray()
+	data.resize(n * 2)
+	var phase: float = 0.0
+	for i in range(n):
+		var t: float = float(i) / float(SR)
+		var alpha: float = t / duration
+		var freq: float = lerp(f_start, f_end, alpha)
+		phase += freq * TAU / float(SR)
+		var env: float = minf(t * 20.0, 1.0) * exp(-t * 2.0)
+		_put_sample(data, i, sin(phase) * env * volume)
+	return _wrap_stream(data)
+
+
 func _make_stage_button(text: String, pos: Vector2, handler: Callable, button_size: Vector2 = Vector2(220, 48)) -> Button:
 	var b: Button = Button.new()
 	b.text = text
@@ -1193,7 +1297,7 @@ class BrewBar extends Control:
 	signal evaluated(grade: String)
 
 	var progress: float = 0.0
-	var speed: float = 0.85  # ~1.18s to fill
+	var speed: float = 1.30  # ~0.77s to fill — tighter, harder to nail
 	var sweet_min: float = 0.6
 	var sweet_max: float = 0.8
 	var locked: bool = false
