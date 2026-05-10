@@ -26,6 +26,19 @@ var defected: int = 0  # colleagues who brought their own pod machine
 # --- stage 2 (café) ---
 var baristas: int = 0
 var cafe_price_mult: float = 1.0
+var current_supplier: int = 0
+var machine_clean: float = 0.9
+var machine_calibration: float = 0.9
+var machine_pressure: float = 0.9
+const MACHINE_DRIFT_CLEAN: float = 0.012
+const MACHINE_DRIFT_CALIB: float = 0.006
+
+const SUPPLIERS: Array[Dictionary] = [
+	{"name": "Local Roaster", "cost": 0.0, "quality": 1.0, "tag": "🏘️"},
+	{"name": "Brazil",        "cost": 1.0, "quality": 1.25, "tag": "🇧🇷"},
+	{"name": "Ethiopia",      "cost": 4.0, "quality": 1.8, "tag": "🇪🇹"},
+	{"name": "Vietnam",       "cost": 0.0, "quality": 0.7, "tag": "🇻🇳"},
+]
 
 # --- stage 3 (chain) ---
 var locations: Array[Dictionary] = []
@@ -92,6 +105,10 @@ var queue_box: HBoxContainer
 var queue: Array[Dictionary] = []  # [{drink, button, brewing}]
 
 var s2_status: Label
+var supplier_buttons: Array[Button] = []
+var machine_clean_bar: ProgressBar
+var machine_calib_bar: ProgressBar
+var machine_press_bar: ProgressBar
 var s3_status: Label
 var s4_status: Label
 
@@ -155,6 +172,10 @@ func _enter_stage(s: int) -> void:
 	office_label = null
 	queue_box = null
 	s2_status = null
+	supplier_buttons.clear()
+	machine_clean_bar = null
+	machine_calib_bar = null
+	machine_press_bar = null
 	s3_status = null
 	s4_status = null
 	spawn_timer.stop()
@@ -383,29 +404,60 @@ func _buy_machine() -> void:
 #  STAGE 2 — Café Owner
 # ============================================================
 func _setup_stage_2() -> void:
-	_stage_title("☕  Café Owner — your own place, your own staff")
+	_stage_title("☕  Café Owner — supplies and equipment matter now")
 
-	var blurb: Label = Label.new()
-	blurb.text = "Hire baristas. Each barista earns ~$5/sec, scaled by your price multiplier."
-	blurb.position = Vector2(20, 50)
-	blurb.size = Vector2(920, 28)
-	blurb.modulate = STAGE_FG[2]
-	stage_view.add_child(blurb)
-
-	_make_stage_button("Hire barista", Vector2(20, 110), _hire_barista)
-	_make_stage_button("Raise prices +10%", Vector2(260, 110), _raise_prices)
-	_make_stage_button("PROMOTE → Chain CEO", Vector2(500, 110), _try_promote)
+	_make_stage_button("Hire barista", Vector2(20, 50), _hire_barista)
+	_make_stage_button("Raise prices +10%", Vector2(260, 50), _raise_prices)
+	_make_stage_button("PROMOTE → Chain CEO", Vector2(500, 50), _try_promote)
 
 	s2_status = Label.new()
-	s2_status.position = Vector2(20, 200)
-	s2_status.size = Vector2(920, 200)
+	s2_status.position = Vector2(20, 110)
+	s2_status.size = Vector2(920, 50)
 	s2_status.modulate = STAGE_FG[2]
-	s2_status.add_theme_font_size_override("font_size", 16)
+	s2_status.add_theme_font_size_override("font_size", 14)
 	stage_view.add_child(s2_status)
+
+	# --- suppliers ---
+	var sup_h: Label = Label.new()
+	sup_h.text = "🌍  BEAN SUPPLIERS — pick one (cost & quality affect revenue)"
+	sup_h.position = Vector2(20, 165)
+	sup_h.size = Vector2(920, 24)
+	sup_h.modulate = STAGE_FG[2]
+	sup_h.add_theme_font_size_override("font_size", 14)
+	stage_view.add_child(sup_h)
+
+	supplier_buttons.clear()
+	for i in range(SUPPLIERS.size()):
+		var col: int = i % 2
+		var row: int = i / 2
+		var b: Button = _make_stage_button(
+			"",
+			Vector2(20 + col * 460, 195 + row * 38),
+			_choose_supplier.bind(i),
+			Vector2(440, 32),
+		)
+		supplier_buttons.append(b)
+
+	# --- machine ---
+	var mh: Label = Label.new()
+	mh.text = "🛠️  ESPRESSO MACHINE — gauges drift each second, keep them healthy"
+	mh.position = Vector2(20, 285)
+	mh.size = Vector2(920, 24)
+	mh.modulate = STAGE_FG[2]
+	mh.add_theme_font_size_override("font_size", 14)
+	stage_view.add_child(mh)
+
+	machine_clean_bar = _make_gauge(Vector2(20, 318), "Cleanliness")
+	machine_calib_bar = _make_gauge(Vector2(20, 354), "Calibration")
+	machine_press_bar = _make_gauge(Vector2(20, 390), "Pressure")
+
+	_make_stage_button("Clean", Vector2(670, 314), _clean_machine, Vector2(120, 32))
+	_make_stage_button("Calibrate", Vector2(670, 350), _calibrate_machine, Vector2(120, 32))
+	_make_stage_button("Tune", Vector2(670, 386), _tune_machine, Vector2(120, 32))
 
 	revenue_timer.wait_time = 1.0
 	revenue_timer.start()
-	_update_s2_status()
+	_refresh_stage_2_ui()
 
 
 func _hire_barista() -> void:
@@ -415,7 +467,7 @@ func _hire_barista() -> void:
 		return
 	money -= cost
 	baristas += 1
-	_update_s2_status()
+	_refresh_stage_2_ui()
 	_refresh_hud()
 
 
@@ -423,18 +475,72 @@ func _raise_prices() -> void:
 	cafe_price_mult += 0.1
 	rep = maxf(rep - 0.05, 0.0)
 	_notify("Prices up 10%, rep took a small hit.")
-	_update_s2_status()
+	_refresh_stage_2_ui()
 	_refresh_hud()
 
 
-func _update_s2_status() -> void:
-	if s2_status == null:
-		return
-	var rev_per_sec: float = float(baristas) * 5.0 * cafe_price_mult
-	var next_cost: int = int(50.0 + float(baristas) * 50.0)
-	s2_status.text = "Baristas: %d\nPrice multiplier: %.1fx\nRevenue: $%.2f / sec\n\nNext barista: $%d\n\n(More mechanics coming: bean sourcing, espresso machine maintenance)" % [
-		baristas, cafe_price_mult, rev_per_sec, next_cost,
-	]
+func _choose_supplier(idx: int) -> void:
+	current_supplier = idx
+	_notify("Now sourcing from %s." % String(SUPPLIERS[idx]["name"]))
+	_refresh_stage_2_ui()
+
+
+func _clean_machine() -> void:
+	machine_clean = 1.0
+	_notify("Machine wiped down — clean.")
+	_refresh_stage_2_ui()
+
+
+func _calibrate_machine() -> void:
+	machine_calibration = 1.0
+	_notify("Calibrated — pulls dialed in.")
+	_refresh_stage_2_ui()
+
+
+func _tune_machine() -> void:
+	machine_pressure = 1.0
+	_notify("Pressure tuned to 9 bar.")
+	_refresh_stage_2_ui()
+
+
+func _stage_2_machine_health() -> float:
+	return (machine_clean + machine_calibration + machine_pressure) / 3.0
+
+
+func _stage_2_revenue_per_sec() -> float:
+	var sup: Dictionary = SUPPLIERS[current_supplier]
+	var multiplier: float = 0.3 + 0.7 * _stage_2_machine_health()
+	var gross: float = float(baristas) * 5.0 * cafe_price_mult * float(sup["quality"]) * multiplier
+	return gross - float(sup["cost"])
+
+
+func _refresh_stage_2_ui() -> void:
+	# supplier buttons
+	for i in range(SUPPLIERS.size()):
+		if i >= supplier_buttons.size():
+			continue
+		var sup: Dictionary = SUPPLIERS[i]
+		var marker: String = "▶  " if i == current_supplier else "    "
+		var cost_str: String = "free" if float(sup["cost"]) == 0.0 else "$%.1f/s" % float(sup["cost"])
+		supplier_buttons[i].text = "%s%s %s — %s, ×%.2f quality" % [
+			marker, String(sup["tag"]), String(sup["name"]), cost_str, float(sup["quality"]),
+		]
+	# gauges
+	if machine_clean_bar != null:
+		machine_clean_bar.value = machine_clean
+	if machine_calib_bar != null:
+		machine_calib_bar.value = machine_calibration
+	if machine_press_bar != null:
+		machine_press_bar.value = machine_pressure
+	# stats line
+	if s2_status != null:
+		var sup: Dictionary = SUPPLIERS[current_supplier]
+		var net: float = _stage_2_revenue_per_sec()
+		var next_cost: int = int(50.0 + float(baristas) * 50.0)
+		s2_status.text = "Baristas: %d  ·  Price: %.1fx  ·  Supplier: %s  ·  Machine health: %d%%  ·  Net: $%+.2f/s  ·  Next barista: $%d" % [
+			baristas, cafe_price_mult, String(sup["name"]),
+			int(_stage_2_machine_health() * 100.0), net, next_cost,
+		]
 
 
 # ============================================================
@@ -585,8 +691,11 @@ func _on_spawn() -> void:
 func _on_revenue_tick() -> void:
 	match stage:
 		2:
-			money += float(baristas) * 5.0 * cafe_price_mult
-			_update_s2_status()
+			machine_clean = clampf(machine_clean - MACHINE_DRIFT_CLEAN, 0.0, 1.0)
+			machine_calibration = clampf(machine_calibration - MACHINE_DRIFT_CALIB, 0.0, 1.0)
+			machine_pressure = clampf(machine_pressure + randf_range(-0.04, 0.015), 0.0, 1.0)
+			money += _stage_2_revenue_per_sec()
+			_refresh_stage_2_ui()
 		3:
 			var total: float = 0.0
 			for loc in locations:
@@ -646,14 +755,31 @@ func _make_stage_label(pos: Vector2) -> Label:
 	return l
 
 
-func _make_stage_button(text: String, pos: Vector2, handler: Callable) -> Button:
+func _make_stage_button(text: String, pos: Vector2, handler: Callable, button_size: Vector2 = Vector2(220, 48)) -> Button:
 	var b: Button = Button.new()
 	b.text = text
 	b.position = pos
-	b.size = Vector2(220, 48)
+	b.size = button_size
 	b.pressed.connect(handler)
 	stage_view.add_child(b)
 	return b
+
+
+func _make_gauge(pos: Vector2, label: String) -> ProgressBar:
+	var l: Label = Label.new()
+	l.text = label
+	l.position = pos
+	l.size = Vector2(120, 28)
+	l.modulate = STAGE_FG[stage]
+	stage_view.add_child(l)
+	var p: ProgressBar = ProgressBar.new()
+	p.position = pos + Vector2(130, 4)
+	p.size = Vector2(480, 20)
+	p.min_value = 0.0
+	p.max_value = 1.0
+	p.show_percentage = true
+	stage_view.add_child(p)
+	return p
 
 
 # ============================================================
