@@ -529,14 +529,14 @@ func _setup_stage_2() -> void:
 	_stage_title("☕  Café Owner — supplies and equipment matter now")
 
 	_make_stage_button("Hire barista", Vector2(20, 50), _hire_barista)
-	_make_stage_button("Raise prices +10%", Vector2(260, 50), _raise_prices)
+	_make_stage_button("Raise prices +1%", Vector2(260, 50), _raise_prices)
 	_make_stage_button("PROMOTE → Chain CEO", Vector2(500, 50), _try_promote)
 
 	s2_status = Label.new()
 	s2_status.position = Vector2(20, 110)
-	s2_status.size = Vector2(920, 50)
+	s2_status.size = Vector2(920, 70)
 	s2_status.modulate = STAGE_FG[2]
-	s2_status.add_theme_font_size_override("font_size", 14)
+	s2_status.add_theme_font_size_override("font_size", 13)
 	stage_view.add_child(s2_status)
 
 	# --- suppliers ---
@@ -594,9 +594,9 @@ func _hire_barista() -> void:
 
 
 func _raise_prices() -> void:
-	cafe_price_mult += 0.1
-	rep = maxf(rep - 0.05, 0.0)
-	_notify("Prices up 10%, rep took a small hit.")
+	cafe_price_mult += 0.01
+	rep = maxf(rep - 0.01, 0.0)
+	_notify("Prices +1%. Rep −1%.")
 	_refresh_stage_2_ui()
 	_refresh_hud()
 
@@ -629,10 +629,22 @@ func _stage_2_machine_health() -> float:
 	return (machine_clean + machine_calibration + machine_pressure) / 3.0
 
 
+func _stage_2_rep_multiplier() -> float:
+	# rep damage hits revenue hard: at full rep ×1.0, at zero rep ×0.30
+	return 0.30 + 0.70 * rep
+
+
 func _stage_2_revenue_per_sec() -> float:
 	var sup: Dictionary = SUPPLIERS[current_supplier]
-	var multiplier: float = 0.3 + 0.7 * _stage_2_machine_health()
-	var gross: float = float(baristas) * 5.0 * cafe_price_mult * float(sup["quality"]) * multiplier
+	var machine_mult: float = 0.30 + 0.70 * _stage_2_machine_health()
+	var rep_mult: float = _stage_2_rep_multiplier()
+	var gross: float = (
+		float(baristas) * 5.0
+		* cafe_price_mult
+		* float(sup["quality"])
+		* machine_mult
+		* rep_mult
+	)
 	return gross - float(sup["cost"])
 
 
@@ -654,14 +666,21 @@ func _refresh_stage_2_ui() -> void:
 		machine_calib_bar.value = machine_calibration
 	if machine_press_bar != null:
 		machine_press_bar.value = machine_pressure
-	# stats line
+	# stats panel — three lines so each multiplier is legible
 	if s2_status != null:
 		var sup: Dictionary = SUPPLIERS[current_supplier]
-		var net: float = _stage_2_revenue_per_sec()
+		var rep_mult: float = _stage_2_rep_multiplier()
+		var machine_mult: float = 0.30 + 0.70 * _stage_2_machine_health()
+		var ideal_gross: float = float(baristas) * 5.0 * cafe_price_mult * float(sup["quality"])
+		var realised_gross: float = ideal_gross * machine_mult * rep_mult
+		var net: float = realised_gross - float(sup["cost"])
 		var next_cost: int = int(50.0 + float(baristas) * 50.0)
-		s2_status.text = "Baristas: %d  ·  Price: %.1fx  ·  Supplier: %s  ·  Machine health: %d%%  ·  Net: $%+.2f/s  ·  Next barista: $%d" % [
-			baristas, cafe_price_mult, String(sup["name"]),
-			int(_stage_2_machine_health() * 100.0), net, next_cost,
+		var rep_lost: float = ideal_gross - ideal_gross * rep_mult
+		s2_status.text = "👥 Baristas: %d   💲 Price: %.2fx   📦 %s ×%.2f   📈 Ideal: $%.1f/s\n✨ Rep: %d%% (×%.2f, costing $%.1f/s)   🛠️ Machine: %d%% (×%.2f)\n💰 Realised gross $%.1f − supplier $%.1f = NET $%+.1f/s   ·   Next barista: $%d" % [
+			baristas, cafe_price_mult, String(sup["name"]), float(sup["quality"]), ideal_gross,
+			int(rep * 100.0), rep_mult, rep_lost,
+			int(_stage_2_machine_health() * 100.0), machine_mult,
+			realised_gross, float(sup["cost"]), net, next_cost,
 		]
 
 
