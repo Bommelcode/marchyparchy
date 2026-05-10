@@ -4,8 +4,8 @@ A career-ladder coffee tycoon built in [Godot 4](https://godotengine.org/). Clim
 
 ## The ladder
 
-1. **Office Coffee Juffrouw** — colleagues come asking for espresso. Buy beans, milk, a steamer. Earn tips. Goal: **$200**.
-2. **Café Owner** — your own café. Hire baristas, raise prices. Goal: **$2k**.
+1. **Office Coffee Juffrouw** — colleagues come asking for coffee. Click them, then click the green zone of the brewing bar at the right moment for a perfect cup. Bad cups → colleagues defect and bring their own pod machine. Goal: **$200**.
+2. **Café Owner** — your own café. Hire baristas, raise prices. *(Bean sourcing & espresso machine maintenance coming next.)* Goal: **$2k**.
 3. **Chain CEO** — open locations across the city. Hire managers to double output. Goal: **$100k**.
 4. **Corporate CEO** — IPO time. Run marketing campaigns and stock buybacks. Goal: **$10M to win**.
 

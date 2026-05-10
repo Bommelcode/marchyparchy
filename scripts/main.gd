@@ -2,7 +2,7 @@ extends Control
 
 # ============================================================
 # Corporate Coffee — career-ladder tycoon
-# Stage 1: Office Coffee Juffrouw
+# Stage 1: Office Coffee Juffrouw (timing minigame, defection)
 # Stage 2: Café Owner
 # Stage 3: Chain CEO
 # Stage 4: Corporate CEO  (win at $10M)
@@ -11,7 +11,7 @@ extends Control
 # --- progression ---
 var stage: int = 1
 var money: float = 0.0
-var rep: float = 0.5  # 0..1
+var rep: float = 0.5
 var customers_served: int = 0
 var won: bool = false
 
@@ -19,6 +19,9 @@ var won: bool = false
 var beans: int = 10
 var milk: int = 0
 var has_steamer: bool = false
+var quality: float = 0.7  # 0..1, drives spawn rate
+const OFFICE_SIZE: int = 8
+var defected: int = 0  # colleagues who brought their own pod machine
 
 # --- stage 2 (café) ---
 var baristas: int = 0
@@ -55,18 +58,21 @@ const STAGE_FG: Array[Color] = [
 	Color(0.95, 0.95, 0.95),
 ]
 
-# stage 1 drinks
+# stage 1 drinks — sweet_min/max define the brewing minigame's perfect zone
 const DRINK_ESPRESSO: Dictionary = {
 	"name": "Espresso", "emoji": "☕", "price": 2, "tip": 2,
 	"beans": 1, "milk": 0, "needs_steamer": false,
+	"sweet_min": 0.55, "sweet_max": 0.78,
 }
 const DRINK_CAPPUCCINO: Dictionary = {
 	"name": "Cappuccino", "emoji": "🍼", "price": 4, "tip": 3,
 	"beans": 1, "milk": 1, "needs_steamer": true,
+	"sweet_min": 0.60, "sweet_max": 0.76,
 }
 const DRINK_LATTE: Dictionary = {
 	"name": "Latte", "emoji": "🥛", "price": 5, "tip": 4,
 	"beans": 1, "milk": 2, "needs_steamer": true,
+	"sweet_min": 0.66, "sweet_max": 0.80,
 }
 
 # --- ui (built once) ---
@@ -80,9 +86,10 @@ var revenue_timer: Timer
 # --- ui (rebuilt per stage) ---
 var beans_label: Label
 var milk_label: Label
-var rep_label: Label
+var quality_label: Label
+var office_label: Label
 var queue_box: HBoxContainer
-var queue: Array[Dictionary] = []  # [{drink, button}]
+var queue: Array[Dictionary] = []  # [{drink, button, brewing}]
 
 var s2_status: Label
 var s3_status: Label
@@ -144,7 +151,8 @@ func _enter_stage(s: int) -> void:
 	queue.clear()
 	beans_label = null
 	milk_label = null
-	rep_label = null
+	quality_label = null
+	office_label = null
 	queue_box = null
 	s2_status = null
 	s3_status = null
@@ -163,7 +171,7 @@ func _enter_stage(s: int) -> void:
 
 
 func _refresh_hud() -> void:
-	hud_label.text = "💰 $%s   ⭐ %d%%   🪜 Stage %d/4 · %s   🎯 next: $%s" % [
+	hud_label.text = "💰 $%s   ⭐ Rep %d%%   🪜 Stage %d/4 · %s   🎯 next: $%s" % [
 		_fmt_money(money), int(rep * 100.0), stage, STAGE_NAMES[stage], _fmt_money(STAGE_GOALS[stage]),
 	]
 
@@ -184,29 +192,31 @@ func _fmt_money(amount: float) -> String:
 #  STAGE 1 — Office Coffee Juffrouw
 # ============================================================
 func _setup_stage_1() -> void:
-	_stage_title("☕  Office Coffee Juffrouw — make coffee for colleagues")
+	_stage_title("☕  Office Coffee Juffrouw — brew well or they'll bring their own machines")
 
 	beans_label = _make_stage_label(Vector2(20, 50))
-	milk_label = _make_stage_label(Vector2(220, 50))
-	rep_label = _make_stage_label(Vector2(420, 50))
+	milk_label = _make_stage_label(Vector2(180, 50))
+	quality_label = _make_stage_label(Vector2(340, 50))
+	office_label = _make_stage_label(Vector2(540, 50))
 
 	var qh: Label = Label.new()
-	qh.text = "Colleagues (click to serve their order):"
-	qh.position = Vector2(20, 100)
-	qh.size = Vector2(500, 28)
+	qh.text = "Colleagues — click to start brewing, click again on the green zone for a perfect cup:"
+	qh.position = Vector2(20, 92)
+	qh.size = Vector2(920, 28)
+	qh.modulate = STAGE_FG[1]
 	stage_view.add_child(qh)
 
 	queue_box = HBoxContainer.new()
-	queue_box.position = Vector2(20, 132)
+	queue_box.position = Vector2(20, 124)
 	queue_box.size = Vector2(920, 110)
 	queue_box.add_theme_constant_override("separation", 8)
 	stage_view.add_child(queue_box)
 
-	_make_stage_button("Buy beans (10) — $5", Vector2(20, 270), _buy_beans)
-	_make_stage_button("Buy milk (10) — $3", Vector2(260, 270), _buy_milk)
-	_make_stage_button("Steamer — $30", Vector2(500, 270), _buy_steamer)
-	_make_stage_button("Faster spawns — $40", Vector2(740, 270), _buy_machine)
-	_make_stage_button("PROMOTE → Café Owner", Vector2(20, 340), _try_promote)
+	_make_stage_button("Buy beans (10) — $5", Vector2(20, 260), _buy_beans)
+	_make_stage_button("Buy milk (10) — $3", Vector2(260, 260), _buy_milk)
+	_make_stage_button("Steamer — $30", Vector2(500, 260), _buy_steamer)
+	_make_stage_button("Faster spawns — $40", Vector2(740, 260), _buy_machine)
+	_make_stage_button("PROMOTE → Café Owner", Vector2(20, 330), _try_promote)
 
 	spawn_timer.wait_time = 3.0
 	spawn_timer.start()
@@ -218,12 +228,23 @@ func _update_s1_labels() -> void:
 		beans_label.text = "🫘 Beans: %d" % beans
 	if milk_label != null:
 		milk_label.text = "🥛 Milk: %d" % milk
-	if rep_label != null:
-		rep_label.text = "⭐ Rep: %d%%" % int(rep * 100.0)
+	if quality_label != null:
+		quality_label.text = "✨ Quality: %d%%" % int(quality * 100.0)
+	if office_label != null:
+		office_label.text = "🏢 Loyal: %d/%d" % [OFFICE_SIZE - defected, OFFICE_SIZE]
 
 
 func _spawn_colleague() -> void:
-	if queue_box == null or queue.size() >= 6:
+	if queue_box == null:
+		return
+	var active: int = OFFICE_SIZE - defected
+	if active <= 0:
+		_notify("Everyone brought their own pod machine. You need to promote out of here.")
+		return
+	if queue.size() >= mini(active, 4):
+		return
+	# spawn chance scales with quality
+	if randf() > 0.35 + quality * 0.65:
 		return
 	var pool: Array[Dictionary] = [DRINK_ESPRESSO]
 	if has_steamer:
@@ -232,35 +253,82 @@ func _spawn_colleague() -> void:
 	var drink: Dictionary = pool.pick_random()
 
 	var btn: Button = Button.new()
-	btn.text = "🧑\n%s\n$%d" % [String(drink["emoji"]), int(drink["price"])]
+	btn.text = "🧑\n%s\nclick" % String(drink["emoji"])
 	btn.custom_minimum_size = Vector2(86, 96)
-	var entry: Dictionary = {"drink": drink, "button": btn}
-	btn.pressed.connect(_serve_colleague.bind(entry))
+	var entry: Dictionary = {"drink": drink, "button": btn, "brewing": false}
+	btn.pressed.connect(_start_brew.bind(entry))
 	queue_box.add_child(btn)
 	queue.append(entry)
 
 
-func _serve_colleague(entry: Dictionary) -> void:
+func _start_brew(entry: Dictionary) -> void:
+	if bool(entry.get("brewing", false)):
+		return
 	var drink: Dictionary = entry["drink"]
 	var btn: Button = entry["button"]
 	var need_beans: int = int(drink["beans"])
 	var need_milk: int = int(drink["milk"])
 	if beans < need_beans:
-		_notify("Out of beans! Buy more.")
+		_notify("Out of beans — buy more.")
 		return
 	if need_milk > 0 and milk < need_milk:
 		_notify("Out of milk!")
 		return
 	beans -= need_beans
 	milk -= need_milk
-	var tip: int = randi_range(0, int(drink["tip"]))
-	var revenue: float = float(drink["price"]) + float(tip)
+	_update_s1_labels()
+	_refresh_hud()
+
+	var bar: BrewBar = BrewBar.new()
+	bar.label_text = "🧑 %s\nclick green!" % String(drink["emoji"])
+	bar.sweet_min = float(drink["sweet_min"])
+	bar.sweet_max = float(drink["sweet_max"])
+	bar.evaluated.connect(_brew_finished.bind(entry, bar))
+	var idx: int = btn.get_index()
+	queue_box.add_child(bar)
+	queue_box.move_child(bar, idx)
+	btn.queue_free()
+	entry["button"] = bar
+	entry["brewing"] = true
+
+
+func _brew_finished(grade: String, entry: Dictionary, bar: BrewBar) -> void:
+	var drink: Dictionary = entry["drink"]
+	var base_price: int = int(drink["price"])
+	var max_tip: int = int(drink["tip"])
+	var revenue: float = 0.0
+	var q_delta: float = 0.0
+	var defect_chance: float = 0.0
+	var msg: String = ""
+	match grade:
+		"perfect":
+			revenue = float(base_price) + float(max_tip) * 1.4
+			q_delta = 0.05
+			msg = "✨ Perfect %s — $%d (incl. tip)" % [String(drink["name"]), int(revenue)]
+		"good":
+			revenue = float(base_price) + float(max_tip) * 0.6
+			q_delta = 0.01
+			msg = "👍 Decent %s — $%d" % [String(drink["name"]), int(revenue)]
+		"mediocre":
+			revenue = float(base_price) * 0.5
+			q_delta = -0.04
+			defect_chance = 0.10
+			msg = "😐 Meh %s — $%d (no tip)" % [String(drink["name"]), int(revenue)]
+		_:  # "burnt"
+			revenue = 0.0
+			q_delta = -0.08
+			defect_chance = 0.30
+			msg = "🔥 Burnt the %s — refund." % String(drink["name"])
 	money += revenue
 	customers_served += 1
-	rep = clampf(rep + 0.01, 0.0, 1.0)
+	quality = clampf(quality + q_delta, 0.0, 1.0)
+	rep = quality
+	if defect_chance > 0.0 and randf() < defect_chance and defected < OFFICE_SIZE:
+		defected += 1
+		msg += "  💔 colleague brought their own pod machine."
 	queue.erase(entry)
-	btn.queue_free()
-	_notify("Served %s · earned $%d (tip $%d)" % [String(drink["name"]), int(drink["price"]), tip])
+	bar.queue_free()
+	_notify(msg)
 	_update_s1_labels()
 	_refresh_hud()
 
@@ -364,7 +432,7 @@ func _update_s2_status() -> void:
 		return
 	var rev_per_sec: float = float(baristas) * 5.0 * cafe_price_mult
 	var next_cost: int = int(50.0 + float(baristas) * 50.0)
-	s2_status.text = "Baristas: %d\nPrice multiplier: %.1fx\nRevenue: $%.2f / sec\n\nNext barista: $%d" % [
+	s2_status.text = "Baristas: %d\nPrice multiplier: %.1fx\nRevenue: $%.2f / sec\n\nNext barista: $%d\n\n(More mechanics coming: bean sourcing, espresso machine maintenance)" % [
 		baristas, cafe_price_mult, rev_per_sec, next_cost,
 	]
 
@@ -586,3 +654,82 @@ func _make_stage_button(text: String, pos: Vector2, handler: Callable) -> Button
 	b.pressed.connect(handler)
 	stage_view.add_child(b)
 	return b
+
+
+# ============================================================
+#  BREW MINIGAME WIDGET
+# ============================================================
+class BrewBar extends Control:
+	signal evaluated(grade: String)
+
+	var progress: float = 0.0
+	var speed: float = 0.85  # ~1.18s to fill
+	var sweet_min: float = 0.6
+	var sweet_max: float = 0.8
+	var locked: bool = false
+	var label_text: String = ""
+	var _label: Label
+
+	func _ready() -> void:
+		custom_minimum_size = Vector2(150, 96)
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		_label = Label.new()
+		_label.text = label_text
+		_label.position = Vector2(8, 6)
+		_label.size = Vector2(140, 56)
+		_label.add_theme_color_override("font_color", Color(0.15, 0.08, 0.05))
+		_label.add_theme_font_size_override("font_size", 12)
+		add_child(_label)
+
+	func _process(delta: float) -> void:
+		if locked:
+			return
+		progress += delta * speed
+		if progress >= 1.0:
+			progress = 1.0
+			locked = true
+			evaluated.emit("burnt")
+		queue_redraw()
+
+	func _gui_input(event: InputEvent) -> void:
+		if locked:
+			return
+		if event is InputEventMouseButton:
+			var mb: InputEventMouseButton = event
+			if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+				_lock_in()
+
+	func _lock_in() -> void:
+		if locked:
+			return
+		locked = true
+		var grade: String
+		if progress >= sweet_min and progress <= sweet_max:
+			grade = "perfect"
+		elif progress >= sweet_min - 0.10 and progress <= sweet_max + 0.10:
+			grade = "good"
+		else:
+			grade = "mediocre"
+		evaluated.emit(grade)
+
+	func _draw() -> void:
+		var w: float = size.x
+		var h: float = size.y
+		# bar area sits at the bottom 28px
+		var bar_top: float = h - 32.0
+		var bar_h: float = 24.0
+		var bar_w: float = w - 8.0
+		var bar_x: float = 4.0
+		# border
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.30, 0.20, 0.10), false, 2.0)
+		# bar bg
+		draw_rect(Rect2(Vector2(bar_x, bar_top), Vector2(bar_w, bar_h)), Color(0.92, 0.86, 0.74))
+		# sweet zone
+		var sx: float = bar_x + sweet_min * bar_w
+		var sw: float = (sweet_max - sweet_min) * bar_w
+		draw_rect(Rect2(Vector2(sx, bar_top), Vector2(sw, bar_h)), Color(0.45, 0.85, 0.45, 0.85))
+		# progress fill
+		draw_rect(Rect2(Vector2(bar_x, bar_top), Vector2(progress * bar_w, bar_h)), Color(0.55, 0.35, 0.18, 0.35))
+		# indicator
+		var ix: float = bar_x + progress * bar_w
+		draw_line(Vector2(ix, bar_top - 2), Vector2(ix, bar_top + bar_h + 2), Color(0.15, 0.08, 0.05), 3.0)
