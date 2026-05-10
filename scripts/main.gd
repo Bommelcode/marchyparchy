@@ -12,17 +12,17 @@ extends Control
 var stage: int = 1
 var money: float = 0.0
 var rep: float = 0.5
-var customers_served: int = 0
 var won: bool = false
 
-# --- universal metrics ---
+# --- universal metrics (cups counted as floats, displayed as ints) ---
 var session_start_msec: int = 0
 var current_rate: float = 0.0
 var money_last_tick: float = 0.0
-var s1_perfect: int = 0
-var s1_good: int = 0
-var s1_mediocre: int = 0
-var s1_burnt: int = 0
+var customers_served: float = 0.0
+var total_perfect: float = 0.0
+var total_good: float = 0.0
+var total_mediocre: float = 0.0
+var total_burnt: float = 0.0
 
 # --- stage 1 (office) ---
 var beans: int = 10
@@ -249,7 +249,8 @@ func _refresh_hud() -> void:
 	var rate_sign: String = "↗" if current_rate >= 0.0 else "↘"
 	hud_label.text = "💰 $%s   ⭐ Rep %d%%   🪜 Stage %d/4 · %s   🎯 next: $%s\n⏱ %d:%02d   %s $%+.2f/s   🧑 served: %d   ✨ perfect: %d / 🔥 burnt: %d" % [
 		_fmt_money(money), int(rep * 100.0), stage, STAGE_NAMES[stage], _fmt_money(STAGE_GOALS[stage]),
-		mm, ss, rate_sign, current_rate, customers_served, s1_perfect, s1_burnt,
+		mm, ss, rate_sign, current_rate,
+		int(customers_served), int(total_perfect), int(total_burnt),
 	]
 
 
@@ -257,6 +258,17 @@ func _on_metrics_tick() -> void:
 	current_rate = money - money_last_tick
 	money_last_tick = money
 	_refresh_hud()
+
+
+func _record_cups(count: float, perfect_rate: float, burnt_rate: float) -> void:
+	if count <= 0.0:
+		return
+	customers_served += count
+	total_perfect += count * perfect_rate
+	total_burnt += count * burnt_rate
+	# the rest are split between good/mediocre — not separately tracked in late stages
+	total_good += count * (1.0 - perfect_rate - burnt_rate) * 0.7
+	total_mediocre += count * (1.0 - perfect_rate - burnt_rate) * 0.3
 
 
 func _dev_skip_stage() -> void:
@@ -399,27 +411,27 @@ func _brew_finished(grade: String, entry: Dictionary, bar: BrewBar) -> void:
 		"perfect":
 			revenue = float(base_price) + float(max_tip) * 1.4
 			q_delta = 0.05
-			s1_perfect += 1
+			total_perfect += 1.0
 			msg = "✨ Perfect %s — $%d (incl. tip)" % [String(drink["name"]), int(revenue)]
 		"good":
 			revenue = float(base_price) + float(max_tip) * 0.6
 			q_delta = 0.01
-			s1_good += 1
+			total_good += 1.0
 			msg = "👍 Decent %s — $%d" % [String(drink["name"]), int(revenue)]
 		"mediocre":
 			revenue = float(base_price) * 0.5
 			q_delta = -0.04
 			defect_chance = 0.10
-			s1_mediocre += 1
+			total_mediocre += 1.0
 			msg = "😐 Meh %s — $%d (no tip)" % [String(drink["name"]), int(revenue)]
 		_:  # "burnt"
 			revenue = 0.0
 			q_delta = -0.08
 			defect_chance = 0.30
-			s1_burnt += 1
+			total_burnt += 1.0
 			msg = "🔥 Burnt the %s — refund." % String(drink["name"])
 	money += revenue
-	customers_served += 1
+	customers_served += 1.0
 	quality = clampf(quality + q_delta, 0.0, 1.0)
 	rep = quality
 	if defect_chance > 0.0 and randf() < defect_chance and defected < OFFICE_SIZE:
@@ -997,15 +1009,26 @@ func _on_revenue_tick() -> void:
 			machine_calibration = clampf(machine_calibration - MACHINE_DRIFT_CALIB, 0.0, 1.0)
 			machine_pressure = clampf(machine_pressure + randf_range(-0.04, 0.015), 0.0, 1.0)
 			money += _stage_2_revenue_per_sec()
+			# baristas serve ~1 cup/s each; quality follows machine health
+			var s2_health: float = _stage_2_machine_health()
+			_record_cups(
+				float(baristas),
+				0.45 + 0.30 * s2_health,   # perfect rate: 45–75%
+				maxf(0.02, 0.15 - 0.10 * s2_health),  # burnt rate: 5–15%
+			)
 			_refresh_stage_2_ui()
 		3:
 			var total_net: float = 0.0
+			var total_gross: float = 0.0
 			for loc in locations:
 				var managed: bool = bool(loc.get("manager", false))
 				var drain: float = PROMO_DRAIN_MANAGED if managed else PROMO_DRAIN_BASE
 				loc["promotion"] = clampf(float(loc.get("promotion", 0.0)) - drain, 0.0, 1.0)
 				total_net += _location_net_revenue(loc)
+				total_gross += _location_gross_revenue(loc)
 			money += total_net
+			# cups derived from gross at ~$5/cup; chains run smoothly
+			_record_cups(total_gross / 5.0, 0.55, 0.05)
 			_refresh_stage_3_ui()
 		4:
 			if strike_seconds > 0:
@@ -1030,6 +1053,9 @@ func _on_revenue_tick() -> void:
 			# slow morale recovery
 			morale = clampf(morale + 0.005, 0.0, 1.0)
 			money += _stage_4_net_revenue()
+			# corporate scale: cups derived from gross at ~$8/cup blended
+			var s4_perfect_rate: float = 0.45 + 0.10 * morale  # morale tilts perfect rate
+			_record_cups(_stage_4_gross_revenue() / 8.0, s4_perfect_rate, 0.05)
 			_check_win()
 			_refresh_stage_4_ui()
 	_refresh_hud()
