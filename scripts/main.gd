@@ -141,7 +141,8 @@ const DRINK_LATTE: Dictionary = {
 
 # --- ui (built once) ---
 var bg: ColorRect
-var hud_label: Label
+var hud_panel: Panel
+var hud_label: RichTextLabel
 var notif_label: Label
 var stage_view: Control
 var spawn_timer: Timer
@@ -213,21 +214,42 @@ func _build_root_ui() -> void:
 	bg.anchor_bottom = 1.0
 	add_child(bg)
 
-	hud_label = Label.new()
-	hud_label.position = Vector2(20, 8)
+	hud_panel = Panel.new()
+	hud_panel.position = Vector2(8, 4)
+	hud_panel.size = Vector2(944, 56)
+	var hud_sb: StyleBoxFlat = StyleBoxFlat.new()
+	hud_sb.bg_color = Color(0.10, 0.11, 0.14, 0.92)
+	hud_sb.corner_radius_top_left = 8
+	hud_sb.corner_radius_top_right = 8
+	hud_sb.corner_radius_bottom_left = 8
+	hud_sb.corner_radius_bottom_right = 8
+	hud_sb.border_color = Color(1.0, 1.0, 1.0, 0.10)
+	hud_sb.border_width_left = 1
+	hud_sb.border_width_right = 1
+	hud_sb.border_width_top = 1
+	hud_sb.border_width_bottom = 1
+	hud_panel.add_theme_stylebox_override("panel", hud_sb)
+	add_child(hud_panel)
+
+	hud_label = RichTextLabel.new()
+	hud_label.bbcode_enabled = true
+	hud_label.fit_content = true
+	hud_label.scroll_active = false
+	hud_label.position = Vector2(20, 10)
 	hud_label.size = Vector2(740, 50)
-	hud_label.add_theme_font_size_override("font_size", 14)
+	hud_label.add_theme_font_size_override("normal_font_size", 14)
+	hud_label.add_theme_font_size_override("bold_font_size", 14)
 	add_child(hud_label)
 
 	dev_skip_button = Button.new()
-	dev_skip_button.text = "⏭ skip stage (dev)"
-	dev_skip_button.position = Vector2(770, 8)
-	dev_skip_button.size = Vector2(170, 28)
+	dev_skip_button.text = "⏭ skip stage"
+	dev_skip_button.position = Vector2(778, 16)
+	dev_skip_button.size = Vector2(160, 32)
 	dev_skip_button.pressed.connect(_dev_skip_stage)
 	add_child(dev_skip_button)
 
 	notif_label = Label.new()
-	notif_label.position = Vector2(20, 60)
+	notif_label.position = Vector2(20, 64)
 	notif_label.size = Vector2(920, 22)
 	notif_label.modulate = Color(0.35, 0.55, 0.35)
 	add_child(notif_label)
@@ -270,7 +292,7 @@ func _enter_stage(s: int) -> void:
 	stage = s
 	bg.color = STAGE_BG[s]
 	var fg: Color = STAGE_FG[s]
-	hud_label.modulate = fg
+	# hud_label uses BBCode colors, no per-stage tinting
 	notif_label.modulate = fg.lerp(Color(0.3, 0.7, 0.3), 0.5)
 
 	for c in stage_view.get_children():
@@ -328,11 +350,28 @@ func _refresh_hud() -> void:
 	var elapsed_s: int = (Time.get_ticks_msec() - session_start_msec) / 1000
 	var mm: int = elapsed_s / 60
 	var ss: int = elapsed_s % 60
+	var rate_color: String = "#7fdcff" if current_rate >= 0.0 else "#ff8c70"
 	var rate_sign: String = "↗" if current_rate >= 0.0 else "↘"
-	hud_label.text = "💰 $%s   ⭐ Rep %d%%   🪜 Stage %d/4 · %s   🎯 next: $%s\n⏱ %d:%02d   %s $%+.2f/s   🧑 served: %d   ✨ perfect: %d / 🔥 burnt: %d" % [
-		_fmt_money(money), int(rep * 100.0), stage, STAGE_NAMES[stage], _fmt_money(STAGE_GOALS[stage]),
-		mm, ss, rate_sign, current_rate,
-		int(customers_served), int(total_perfect), int(total_burnt),
+	# Two-line dashboard with colored metric chips
+	hud_label.text = (
+		"[b][color=#f0c040]💰 $%s[/color][/b]"
+		+ "   [color=#7fdc8a]⭐ Rep %d%%[/color]"
+		+ "   [color=%s]%s $%+.2f/s[/color]"
+		+ "   [color=#b8b8c0]⏱ %d:%02d[/color]"
+		+ "   [color=#d8c8a0]🧑 %d served[/color]"
+		+ "\n[color=#9fc7e8]🪜 Stage %d/4 · %s[/color]"
+		+ "   [color=#f0a050]🎯 next: $%s[/color]"
+		+ "   [color=#f0c040]✨ %d perfect[/color]"
+		+ "   [color=#ff7060]🔥 %d burnt[/color]"
+	) % [
+		_fmt_money(money),
+		int(rep * 100.0),
+		rate_color, rate_sign, current_rate,
+		mm, ss,
+		int(customers_served),
+		stage, STAGE_NAMES[stage],
+		_fmt_money(STAGE_GOALS[stage]),
+		int(total_perfect), int(total_burnt),
 	]
 
 
