@@ -5,7 +5,7 @@ var money: int = 50
 var stock: int = 5
 var price: int = 10
 var helpers: int = 0
-var queue: Array = []
+var queue: Array[Button] = []
 
 const RESTOCK_COST: int = 5
 const HIRE_COST: int = 50
@@ -137,11 +137,11 @@ func _serve_customer(btn: Button) -> void:
 func _on_helper_tick() -> void:
 	if helpers <= 0 or queue.is_empty() or stock <= 0:
 		return
-	var to_serve := min(helpers, queue.size())
+	var to_serve: int = mini(helpers, queue.size())
 	for i in range(to_serve):
 		if stock <= 0 or queue.is_empty():
 			break
-		var btn: Button = queue[0]
+		var btn := queue[0]
 		queue.pop_front()
 		stock -= 1
 		money += price
