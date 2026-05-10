@@ -51,6 +51,9 @@ const SUPPLIERS: Array[Dictionary] = [
 
 # --- stage 3 (chain) ---
 var locations: Array[Dictionary] = []
+const PROMO_DRAIN_BASE: float = 0.015     # per second, no manager
+const PROMO_DRAIN_MANAGED: float = 0.008  # per second, with manager
+const MANAGER_SALARY: float = 5.0         # $/sec ongoing
 
 # --- stage 4 (corporate) ---
 var stock_price: float = 100.0
@@ -622,10 +625,10 @@ func _refresh_stage_2_ui() -> void:
 #  STAGE 3 — Chain CEO
 # ============================================================
 func _setup_stage_3() -> void:
-	_stage_title("🏢  Chain CEO — open locations, balance traffic vs. costs")
+	_stage_title("🏢  Chain CEO — visit locations to keep promo meters topped up")
 
 	var blurb: Label = Label.new()
-	blurb.text = "Each location has gross revenue and operating cost. Cost-cutting trims ops 40% but loses 8% traffic — diminishing returns past 2 cuts."
+	blurb.text = "Each branch has a promo meter that drains. Revenue = base × manager × promo. Visit a branch to push promo back to 100%. Managers slow the drain (but cost $5/s)."
 	blurb.position = Vector2(20, 40)
 	blurb.size = Vector2(920, 28)
 	blurb.modulate = STAGE_FG[3]
@@ -665,7 +668,7 @@ func _buy_location() -> void:
 		"name": "Branch #%d" % (locations.size() + 1),
 		"base_revenue": base_rev,
 		"manager": false,
-		"cuts": 0,
+		"promotion": 1.0,
 	})
 	_refresh_stage_3_ui()
 	_refresh_hud()
@@ -685,44 +688,34 @@ func _hire_manager() -> void:
 	_notify("All locations have managers.")
 
 
-func _cut_location_costs(idx: int) -> void:
+func _visit_location(idx: int) -> void:
 	if idx < 0 or idx >= locations.size():
 		return
 	var loc: Dictionary = locations[idx]
-	var cuts: int = int(loc.get("cuts", 0))
-	if cuts >= 5:
-		_notify("Already cut to the bone — can't squeeze more from %s." % String(loc.get("name", "?")))
-		return
-	loc["cuts"] = cuts + 1
-	var traffic_pct: int = int(pow(0.92, float(cuts + 1)) * 100.0)
-	_notify("%s: cost cut #%d. Traffic now %d%%." % [String(loc.get("name", "?")), cuts + 1, traffic_pct])
+	loc["promotion"] = 1.0
+	_notify("Visited %s — promo back to 100%%." % String(loc.get("name", "?")))
 	_refresh_stage_3_ui()
 	_refresh_hud()
 
 
-func _location_revenue(loc: Dictionary) -> float:
+func _location_gross_revenue(loc: Dictionary) -> float:
 	var base: float = float(loc.get("base_revenue", 0.0))
 	var mgr_mult: float = 2.0 if bool(loc.get("manager", false)) else 1.0
-	var traffic: float = pow(0.92, float(loc.get("cuts", 0)))
-	return base * mgr_mult * traffic
+	var promo: float = float(loc.get("promotion", 0.0))
+	return base * mgr_mult * promo
 
 
-func _location_cost(loc: Dictionary) -> float:
-	var base: float = float(loc.get("base_revenue", 0.0))
-	var mgr_mult: float = 1.5 if bool(loc.get("manager", false)) else 1.0
-	var ops_mult: float = pow(0.60, float(loc.get("cuts", 0)))
-	return base * 0.30 * mgr_mult * ops_mult
+func _location_net_revenue(loc: Dictionary) -> float:
+	var gross: float = _location_gross_revenue(loc)
+	var mgr_cost: float = MANAGER_SALARY if bool(loc.get("manager", false)) else 0.0
+	return gross - mgr_cost
 
 
 func _format_location_row(loc: Dictionary) -> String:
-	var rev: float = _location_revenue(loc)
-	var cost: float = _location_cost(loc)
-	var net: float = rev - cost
-	var traffic: int = int(pow(0.92, float(loc.get("cuts", 0))) * 100.0)
+	var net: float = _location_net_revenue(loc)
 	var mgr_str: String = "👔" if bool(loc.get("manager", false)) else "·  "
-	var cuts: int = int(loc.get("cuts", 0))
-	return "%s  %s   $%5.1f rev  −  $%4.1f cost  =  $%+5.1f net   ·   traffic %3d%%   ·   cuts %d/5" % [
-		mgr_str, String(loc.get("name", "?")), rev, cost, net, traffic, cuts,
+	return "%s  %s   $%+5.1f/s net" % [
+		mgr_str, String(loc.get("name", "?")), net,
 	]
 
 
@@ -730,21 +723,32 @@ func _add_s3_row(idx: int) -> void:
 	if s3_list == null:
 		return
 	var row: HBoxContainer = HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
+	row.add_theme_constant_override("separation", 12)
+
 	var info: Label = Label.new()
-	info.size = Vector2(770, 28)
-	info.custom_minimum_size = Vector2(770, 28)
+	info.size = Vector2(280, 28)
+	info.custom_minimum_size = Vector2(280, 28)
 	info.modulate = STAGE_FG[3]
 	info.add_theme_font_size_override("font_size", 13)
 	row.add_child(info)
-	var cut_btn: Button = Button.new()
-	cut_btn.text = "Cut costs"
-	cut_btn.size = Vector2(110, 26)
-	cut_btn.custom_minimum_size = Vector2(110, 26)
-	cut_btn.pressed.connect(_cut_location_costs.bind(idx))
-	row.add_child(cut_btn)
+
+	var bar: ProgressBar = ProgressBar.new()
+	bar.size = Vector2(380, 24)
+	bar.custom_minimum_size = Vector2(380, 24)
+	bar.min_value = 0.0
+	bar.max_value = 1.0
+	bar.show_percentage = true
+	row.add_child(bar)
+
+	var visit_btn: Button = Button.new()
+	visit_btn.text = "Visit & promote"
+	visit_btn.size = Vector2(160, 26)
+	visit_btn.custom_minimum_size = Vector2(160, 26)
+	visit_btn.pressed.connect(_visit_location.bind(idx))
+	row.add_child(visit_btn)
+
 	s3_list.add_child(row)
-	s3_rows.append({"info": info, "cut": cut_btn})
+	s3_rows.append({"info": info, "promo": bar, "visit": visit_btn})
 
 
 func _refresh_stage_3_ui() -> void:
@@ -754,20 +758,19 @@ func _refresh_stage_3_ui() -> void:
 		if i >= s3_rows.size():
 			continue
 		var row: Dictionary = s3_rows[i]
-		(row["info"] as Label).text = _format_location_row(locations[i])
+		var loc: Dictionary = locations[i]
+		(row["info"] as Label).text = _format_location_row(loc)
+		(row["promo"] as ProgressBar).value = float(loc.get("promotion", 0.0))
 	if s3_status != null:
-		var total_rev: float = 0.0
-		var total_cost: float = 0.0
+		var total_net: float = 0.0
+		var mgrs: int = 0
 		for loc in locations:
-			total_rev += _location_revenue(loc)
-			total_cost += _location_cost(loc)
-		var net: float = total_rev - total_cost
-		var margin: int = 0
-		if total_rev > 0.0:
-			margin = int(net / total_rev * 100.0)
+			total_net += _location_net_revenue(loc)
+			if bool(loc.get("manager", false)):
+				mgrs += 1
 		var next_cost: float = 500.0 * pow(1.6, float(locations.size()))
-		s3_status.text = "📊  %d locations · gross $%.1f/s − costs $%.1f/s = NET $%+.1f/s   ·   margin %d%%   ·   next: $%s" % [
-			locations.size(), total_rev, total_cost, net, margin, _fmt_money(next_cost),
+		s3_status.text = "📊  %d locations · %d managers · NET $%+.1f/s   ·   next location: $%s" % [
+			locations.size(), mgrs, total_net, _fmt_money(next_cost),
 		]
 
 
@@ -996,12 +999,13 @@ func _on_revenue_tick() -> void:
 			money += _stage_2_revenue_per_sec()
 			_refresh_stage_2_ui()
 		3:
-			var total_rev: float = 0.0
-			var total_cost: float = 0.0
+			var total_net: float = 0.0
 			for loc in locations:
-				total_rev += _location_revenue(loc)
-				total_cost += _location_cost(loc)
-			money += total_rev - total_cost
+				var managed: bool = bool(loc.get("manager", false))
+				var drain: float = PROMO_DRAIN_MANAGED if managed else PROMO_DRAIN_BASE
+				loc["promotion"] = clampf(float(loc.get("promotion", 0.0)) - drain, 0.0, 1.0)
+				total_net += _location_net_revenue(loc)
+			money += total_net
 			_refresh_stage_3_ui()
 		4:
 			if strike_seconds > 0:
