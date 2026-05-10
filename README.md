@@ -1,18 +1,23 @@
-# MarchyParchy
+# Corporate Coffee
 
-A tiny paper shop tycoon, built in [Godot 4](https://godotengine.org/).
+A career-ladder coffee tycoon built in [Godot 4](https://godotengine.org/). Climb from the office coffee juffrouw to CEO of a global chain.
 
-Customers walk into your paper shop. Click them to serve. Restock when you run out. Hire helpers. Raise prices when you're feeling bold.
+## The ladder
+
+1. **Office Coffee Juffrouw** — colleagues come asking for espresso. Buy beans, milk, a steamer. Earn tips. Goal: **$200**.
+2. **Café Owner** — your own café. Hire baristas, raise prices. Goal: **$2k**.
+3. **Chain CEO** — open locations across the city. Hire managers to double output. Goal: **$100k**.
+4. **Corporate CEO** — IPO time. Run marketing campaigns and stock buybacks. Goal: **$10M to win**.
 
 ## Run
 
 1. Install Godot 4.3+ — `sudo pacman -S godot` on Arch, or grab a binary from [godotengine.org](https://godotengine.org/download).
-2. Open the project: `godot project.godot`, or import via the Godot project manager.
+2. `godot project.godot` (or import via the Godot project manager).
 3. Press **F5** to play.
 
 ## Status
 
-Day 1 — the bones. Future ideas: shop upgrades, day/night cycle, employee personalities, a cat.
+Day 1 of the rebuild. Each stage is functional and balanced for ~5 min progression. Future ideas: random events (PR scandals, viral TikTok), employee personalities, a competitor chain.
 
 ## License
 
