@@ -13,3 +13,6 @@ export_presets.cfg
 .mono/
 data_*/
 mono_crash.*.json
+
+# Local Claude Code settings (per-machine, not for sharing)
+.claude/settings.local.json
