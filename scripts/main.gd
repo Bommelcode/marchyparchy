@@ -1088,10 +1088,11 @@ func _setup_stage_4() -> void:
 	cartel_button = _make_stage_button("Form cartel", Vector2(480, 66), _toggle_cartel, Vector2(220, 42))
 	_make_stage_button("Layoff round", Vector2(710, 66), _layoff_round, Vector2(220, 42))
 
-	# Row 2 — HR
+	# Row 2 — HR + back to chain
 	_make_stage_button("Hire 5 corp — $1k", Vector2(20, 116), _hire_corporate, Vector2(220, 42))
 	_make_stage_button("Raise wages +10%", Vector2(250, 116), _raise_wages, Vector2(220, 42))
 	_make_stage_button("Cut wages −10%", Vector2(480, 116), _cut_wages, Vector2(220, 42))
+	_make_stage_button("← Back to Chain", Vector2(710, 116), _back_to_chain, Vector2(220, 42))
 
 	# charts
 	var stock_color: Color = Color(0.45, 0.85, 0.55)
@@ -1538,6 +1539,14 @@ func _try_promote() -> void:
 		return
 	if stage < 4:
 		_enter_stage(stage + 1)
+
+
+func _back_to_chain() -> void:
+	# Step from Corporate back to Chain to open more locations.
+	# All Corporate state (stock, staff, cartel, contracts, shares) persists.
+	if stage == 4:
+		_notify("Back to Chain CEO — Corporate state preserved.")
+		_enter_stage(3)
 
 
 func _check_win() -> void:
