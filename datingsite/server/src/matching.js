@@ -1,5 +1,5 @@
 import { DATE_ACTIVITIES, DAYS, PERSONALITY_TRAITS } from './questions.js';
-import { venueFor } from './venues.js';
+import { partnersFor } from './venues.js';
 
 function jaccard(a, b) {
   const setA = new Set(a);
@@ -116,24 +116,39 @@ function nextOccurrence(dayAbbrev, fromDate = new Date()) {
 
 const TIME_ORDER = ['ochtend', 'middag', 'avond'];
 
+// Begintijden per dagdeel; een date duurt nominaal 2 uur.
+export const SLOT_START_HOUR = { ochtend: 10, middag: 14, avond: 20 };
+export const DATE_DURATION_HOURS = 2;
+
+export function slotEndTime(slot) {
+  const d = new Date(`${slot.date}T00:00:00`);
+  d.setHours(SLOT_START_HOUR[slot.timeOfDay] + DATE_DURATION_HOURS, 0, 0, 0);
+  return d;
+}
+
 /**
- * Bouwt de datumprikker voor een match: een gedeelde activiteit op een
- * partnerlocatie in hun stad, plus max 3 concrete tijdsloten uit de
- * overlappende beschikbaarheid. Beide gebruikers prikken sloten; een
- * gedeeld slot maakt de date definitief.
+ * Bouwt de datumprikker voor een match: een gedeelde activiteit bij een
+ * partner in hun stad, plus max 3 concrete tijdsloten waarop zowel beide
+ * gebruikers als de partnerlocatie kunnen (dagdeel open + capaciteit vrij).
+ * `bookingsFor(venueId, slotId)` telt bestaande reserveringen op dat slot.
  */
-export function buildDatePicker(userA, userB, fromDate = new Date()) {
+export function buildDatePicker(userA, userB, bookingsFor, fromDate = new Date()) {
   const a = userA.interview;
   const b = userB.interview;
 
   const sharedActivities = a.preferredActivities.filter((x) =>
     b.preferredActivities.includes(x)
   );
-  const activityId = sharedActivities[0] ?? a.preferredActivities[0];
-  const activity = DATE_ACTIVITIES.find((d) => d.id === activityId);
+  const activityOrder = [
+    ...sharedActivities,
+    ...a.preferredActivities.filter((x) => !sharedActivities.includes(x)),
+  ];
 
   const sharedDays = a.availability.days.filter((d) => b.availability.days.includes(d));
   const dayPool = sharedDays.length > 0 ? sharedDays : a.availability.days;
+  const orderedDays = dayPool
+    .map((d) => ({ day: d, date: nextOccurrence(d, fromDate) }))
+    .sort((x, y) => x.date - y.date);
 
   const sharedTimes = a.availability.timesOfDay.filter((t) =>
     b.availability.timesOfDay.includes(t)
@@ -142,24 +157,37 @@ export function buildDatePicker(userA, userB, fromDate = new Date()) {
     .slice()
     .sort((x, y) => TIME_ORDER.indexOf(x) - TIME_ORDER.indexOf(y));
 
-  const slots = dayPool
-    .map((d) => ({ day: d, date: nextOccurrence(d, fromDate) }))
-    .sort((x, y) => x.date - y.date)
-    .flatMap(({ day, date }) =>
-      timePool.map((timeOfDay) => ({
-        id: `${date.toISOString().slice(0, 10)}-${timeOfDay}`,
-        day,
-        date: date.toISOString().slice(0, 10),
-        timeOfDay,
-      }))
-    )
-    .slice(0, 3);
+  for (const activityId of activityOrder) {
+    const activity = DATE_ACTIVITIES.find((d) => d.id === activityId);
+    for (const venue of partnersFor(userA.city, activityId)) {
+      const venueTimes = timePool.filter((t) => venue.openTimes.includes(t));
+      if (venueTimes.length === 0) continue;
 
-  return {
-    activityId: activity.id,
-    activityLabel: activity.label,
-    venue: venueFor(userA.city, activity.id),
-    city: userA.city,
-    slots,
-  };
+      const slots = orderedDays
+        .flatMap(({ day, date }) =>
+          venueTimes.map((timeOfDay) => ({
+            id: `${date.toISOString().slice(0, 10)}-${timeOfDay}`,
+            day,
+            date: date.toISOString().slice(0, 10),
+            timeOfDay,
+          }))
+        )
+        .filter((slot) => bookingsFor(venue.id, slot.id) < venue.capacityPerSlot)
+        .slice(0, 3);
+
+      if (slots.length > 0) {
+        return {
+          activityId: activity.id,
+          activityLabel: activity.label,
+          venueId: venue.id,
+          venue: venue.name,
+          city: userA.city,
+          slots,
+        };
+      }
+    }
+  }
+
+  // Geen partner met vrije capaciteit op hun overlap: geen prikker mogelijk.
+  return null;
 }

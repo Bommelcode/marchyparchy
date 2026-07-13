@@ -42,7 +42,7 @@ export default function Interview() {
         availability: { days, timesOfDay },
       });
       await refresh();
-      navigate('/dashboard');
+      navigate('/verify'); // stuurt door naar het dashboard als je al geverifieerd bent
     } catch (err) {
       setError(err.message);
     } finally {
@@ -141,7 +141,7 @@ export default function Interview() {
 
         {error && <p className="error">{error}</p>}
         <button type="submit" disabled={busy}>
-          {busy ? 'Opslaan…' : 'Vind mijn match'}
+          {busy ? 'Opslaan…' : 'Opslaan en verder'}
         </button>
       </form>
     </div>

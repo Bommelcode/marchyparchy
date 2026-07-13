@@ -26,11 +26,18 @@ export const api = {
   signup: (payload) => request('/auth/signup', { method: 'POST', body: payload, auth: false }),
   login: (payload) => request('/auth/login', { method: 'POST', body: payload, auth: false }),
   me: () => request('/me'),
+  verify: () => request('/verify', { method: 'POST' }),
   profileSchema: () => request('/profile/schema', { auth: false }),
   interviewSchema: () => request('/interview/schema', { auth: false }),
   submitInterview: (answers) => request('/interview', { method: 'POST', body: answers }),
   matchStatus: () => request('/match/status'),
-  findMatch: () => request('/match/find', { method: 'POST' }),
+  lastResult: () => request('/match/last-result'),
   respondToMatch: (id, response, slotIds) =>
     request(`/match/${id}/respond`, { method: 'POST', body: { response, slotIds } }),
+  payForMatch: (id) => request(`/match/${id}/pay`, { method: 'POST' }),
+  submitFeedback: (id, payload) =>
+    request(`/match/${id}/feedback`, { method: 'POST', body: payload }),
+  // dev-hulpmiddelen (alleen buiten productie beschikbaar)
+  devDrop: () => request('/dev/drop', { method: 'POST' }),
+  devFinishDate: (id) => request(`/dev/finish-date/${id}`, { method: 'POST' }),
 };

@@ -135,7 +135,13 @@ legend {
   cursor: pointer;
 }
 
-.chip.selected {
+button.chip:hover:not(:disabled) {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+.chip.selected,
+button.chip.selected:hover:not(:disabled) {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);

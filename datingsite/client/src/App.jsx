@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './AuthContext.jsx';
 import Signup from './pages/Signup.jsx';
 import Login from './pages/Login.jsx';
 import Interview from './pages/Interview.jsx';
+import Verify from './pages/Verify.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import './App.css';
 
@@ -70,6 +71,14 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <Interview />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/verify"
+              element={
+                <ProtectedRoute>
+                  <Verify />
                 </ProtectedRoute>
               }
             />
