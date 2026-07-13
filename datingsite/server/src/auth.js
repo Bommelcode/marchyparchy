@@ -15,19 +15,19 @@ export function signToken(user) {
   return jwt.sign({ sub: user.id }, JWT_SECRET, { expiresIn: '7d' });
 }
 
-export function requireAuth(db) {
-  return (req, res, next) => {
+export function requireAuth(getUserById) {
+  return async (req, res, next) => {
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-    if (!token) return res.status(401).json({ error: 'Missing auth token' });
+    if (!token) return res.status(401).json({ error: 'Geen auth-token' });
     try {
       const payload = jwt.verify(token, JWT_SECRET);
-      const user = db.users.find((u) => u.id === payload.sub);
-      if (!user) return res.status(401).json({ error: 'Invalid token' });
+      const user = await getUserById(payload.sub);
+      if (!user) return res.status(401).json({ error: 'Ongeldig token' });
       req.user = user;
       next();
     } catch {
-      return res.status(401).json({ error: 'Invalid or expired token' });
+      return res.status(401).json({ error: 'Ongeldig of verlopen token' });
     }
   };
 }

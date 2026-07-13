@@ -50,20 +50,34 @@ strike) en `no_overlap` (beiden geprikt, geen gedeeld moment — geen strike).
 
 ## Structuur
 
-- `server/` — Express-API, JWT-auth, JSON-bestand als datastore. Matching- en
-  datumprikkerlogica in `src/matching.js`, partnerlocaties in `src/venues.js`.
-- `client/` — React (Vite) frontend, volledig Nederlandstalig: registratie,
-  interview en een dashboard met datumprikker.
+- `server/` — Express-API, JWT-auth, PostgreSQL als datastore (`src/db.js`).
+  Matching- en datumprikkerlogica in `src/matching.js`, partnerdatabase in
+  `src/venues.js`.
+- `client/` — React (Vite) webfrontend, volledig Nederlandstalig.
+- `mobile/` — Expo / React Native-app met dezelfde flow, tegen dezelfde API
+  (zie `mobile/README.md`).
 
 ## Lokaal draaien
+
+Vereist PostgreSQL:
+
+```sh
+createuser datingsite -P        # wachtwoord: datingsite
+createdb datingsite -O datingsite
+```
+
+Daarna:
 
 ```sh
 cd server && npm install && npm run dev   # http://localhost:4000
 cd client && npm install && npm run dev   # http://localhost:5173
+cd mobile && npm install && npm start     # Expo (QR voor telefoon)
 ```
 
-De client praat standaard met `http://localhost:4000/api`; overschrijf met
-`VITE_API_URL` indien nodig.
+Het schema wordt bij het opstarten automatisch aangemaakt. De server leest
+`DATABASE_URL` (standaard `postgres://datingsite:datingsite@localhost:5432/datingsite`);
+de webclient praat met `http://localhost:4000/api`, overschrijf met
+`VITE_API_URL` (web) of `EXPO_PUBLIC_API_URL` (app) indien nodig.
 
 ## Nog niet gebouwd (ideeën)
 

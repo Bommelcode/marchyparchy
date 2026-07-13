@@ -130,9 +130,9 @@ export function slotEndTime(slot) {
  * Bouwt de datumprikker voor een match: een gedeelde activiteit bij een
  * partner in hun stad, plus max 3 concrete tijdsloten waarop zowel beide
  * gebruikers als de partnerlocatie kunnen (dagdeel open + capaciteit vrij).
- * `bookingsFor(venueId, slotId)` telt bestaande reserveringen op dat slot.
+ * `bookingsFor(venueId, slotId)` telt (async) bestaande reserveringen.
  */
-export function buildDatePicker(userA, userB, bookingsFor, fromDate = new Date()) {
+export async function buildDatePicker(userA, userB, bookingsFor, fromDate = new Date()) {
   const a = userA.interview;
   const b = userB.interview;
 
@@ -163,17 +163,21 @@ export function buildDatePicker(userA, userB, bookingsFor, fromDate = new Date()
       const venueTimes = timePool.filter((t) => venue.openTimes.includes(t));
       if (venueTimes.length === 0) continue;
 
-      const slots = orderedDays
-        .flatMap(({ day, date }) =>
-          venueTimes.map((timeOfDay) => ({
-            id: `${date.toISOString().slice(0, 10)}-${timeOfDay}`,
-            day,
-            date: date.toISOString().slice(0, 10),
-            timeOfDay,
-          }))
-        )
-        .filter((slot) => bookingsFor(venue.id, slot.id) < venue.capacityPerSlot)
-        .slice(0, 3);
+      const candidateSlots = orderedDays.flatMap(({ day, date }) =>
+        venueTimes.map((timeOfDay) => ({
+          id: `${date.toISOString().slice(0, 10)}-${timeOfDay}`,
+          day,
+          date: date.toISOString().slice(0, 10),
+          timeOfDay,
+        }))
+      );
+      const slots = [];
+      for (const slot of candidateSlots) {
+        if (slots.length === 3) break;
+        if ((await bookingsFor(venue.id, slot.id)) < venue.capacityPerSlot) {
+          slots.push(slot);
+        }
+      }
 
       if (slots.length > 0) {
         return {
