@@ -29,7 +29,7 @@ export default function Verify() {
     <div className="card">
       <h1>Verifieer je profiel</h1>
       <p className="muted">
-        Iedereen op Blind Date is gescreend en geverifieerd, zodat je veilig op date gaat met
+        Iedereen op Met is gescreend en geverifieerd, zodat je veilig op date gaat met
         wie diegene zegt te zijn. Zonder verificatie doe je niet mee aan de dagelijkse
         matchronde.
       </p>

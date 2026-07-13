@@ -143,7 +143,7 @@ export default function Dashboard() {
         <h1>Account gepauzeerd</h1>
         <p>
           Je account staat op pauze — door twee afgewezen datumprikkers of een gemelde no-show.
-          Blind Date is voor mensen die écht op date willen.
+          Met is voor mensen die écht op date willen.
         </p>
       </div>
     );

@@ -8,9 +8,14 @@
 
 .brand {
   font-weight: 700;
-  font-size: 18px;
+  font-size: 22px;
+  letter-spacing: -0.5px;
   color: var(--text-h);
   text-decoration: none;
+}
+
+.brand-dot {
+  color: var(--accent);
 }
 
 .nav-links {

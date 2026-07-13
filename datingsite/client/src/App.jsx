@@ -19,7 +19,7 @@ function NavBar() {
   return (
     <nav className="navbar">
       <Link to="/" className="brand">
-        ☕ Blind Date
+        met<span className="brand-dot">.</span>
       </Link>
       {user && (
         <div className="nav-links">
@@ -38,11 +38,12 @@ function Home() {
   if (user) return <Navigate to="/dashboard" replace />;
   return (
     <div className="card">
-      <h1>Geen geswipe. Geen gechat. Gewoon op date.</h1>
+      <h1>Eindelijk iemand ontmoet.</h1>
       <p className="muted">
-        Beantwoord een kort interview, wij matchen je op compatibiliteit en plannen meteen een
-        echte eerste date — een borrel, koffie of iets sportiefs op een fijne plek in jouw
-        stad. Datumprikker invullen en komen opdagen, meer niet.
+        Geen geswipe, geen gechat. Beantwoord een kort interview, wij matchen je op
+        compatibiliteit en plannen meteen een echte eerste date — een borrel, koffie of iets
+        sportiefs op een fijne plek in jouw stad. Datumprikker invullen en komen opdagen,
+        meer niet.
       </p>
       <div className="actions">
         <Link to="/signup">

@@ -1,5 +1,5 @@
 // Partnerdatabase à la Breeze's horecapartners. Elke partner geeft op welke
-// activiteiten hij host, op welke dagdelen hij Blind Date-tafels heeft en
+// activiteiten hij host, op welke dagdelen hij Met-tafels heeft en
 // hoeveel dates er per tijdslot tegelijk terechtkunnen. In productie beheert
 // de partner dit zelf via een portaal.
 export const PARTNERS = [

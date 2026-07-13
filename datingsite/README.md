@@ -1,4 +1,8 @@
-# Blind Date
+# Met
+
+**Met — eindelijk iemand ontmoet.** De naam werkt dubbel: Engels *met*
+(elkaar ontmoet) én Nederlands *met* — daten doe je mét iemand, en de app
+zegt het overal ("date met Emma").
 
 Een datingapp naar het model van [Breeze](https://breeze.social/nl), gericht op
 dezelfde doelgroep: hoogopgeleide young professionals (±20-35) die klaar zijn
