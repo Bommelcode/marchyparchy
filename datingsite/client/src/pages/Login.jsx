@@ -25,10 +25,10 @@ export default function Login() {
 
   return (
     <div className="card">
-      <h1>Welcome back</h1>
+      <h1>Welkom terug</h1>
       <form onSubmit={handleSubmit}>
         <label>
-          Email
+          E-mailadres
           <input
             type="email"
             required
@@ -37,7 +37,7 @@ export default function Login() {
           />
         </label>
         <label>
-          Password
+          Wachtwoord
           <input
             type="password"
             required
@@ -47,11 +47,11 @@ export default function Login() {
         </label>
         {error && <p className="error">{error}</p>}
         <button type="submit" disabled={busy}>
-          {busy ? 'Logging in…' : 'Log in'}
+          {busy ? 'Inloggen…' : 'Log in'}
         </button>
       </form>
       <p className="muted">
-        New here? <Link to="/signup">Sign up</Link>
+        Nieuw hier? <Link to="/signup">Maak een account</Link>
       </p>
     </div>
   );

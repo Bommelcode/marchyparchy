@@ -8,7 +8,7 @@ import './App.css';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="card">Loading…</div>;
+  if (loading) return <div className="card">Laden…</div>;
   if (!user) return <Navigate to="/login" replace />;
   return children;
 }
@@ -24,7 +24,7 @@ function NavBar() {
         <div className="nav-links">
           <span className="muted">{user.email}</span>
           <button className="link-button" onClick={logout}>
-            Log out
+            Uitloggen
           </button>
         </div>
       )}
@@ -37,14 +37,15 @@ function Home() {
   if (user) return <Navigate to="/dashboard" replace />;
   return (
     <div className="card">
-      <h1>Skip the swiping.</h1>
+      <h1>Geen geswipe. Geen gechat. Gewoon op date.</h1>
       <p className="muted">
-        Answer a short interview, get matched by compatibility, and go on a real first date —
-        coffee, a walk, or something active. No profiles to scroll.
+        Beantwoord een kort interview, wij matchen je op compatibiliteit en plannen meteen een
+        echte eerste date — een borrel, koffie of iets sportiefs op een fijne plek in jouw
+        stad. Datumprikker invullen en komen opdagen, meer niet.
       </p>
       <div className="actions">
         <Link to="/signup">
-          <button>Get started</button>
+          <button>Aan de slag</button>
         </Link>
         <Link to="/login">
           <button className="secondary">Log in</button>

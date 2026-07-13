@@ -17,7 +17,7 @@ async function request(path, { method = 'GET', body, auth = true } = {}) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(data.error || `Request failed (${res.status})`);
+    throw new Error(data.error || `Er ging iets mis (${res.status})`);
   }
   return data;
 }
@@ -26,10 +26,11 @@ export const api = {
   signup: (payload) => request('/auth/signup', { method: 'POST', body: payload, auth: false }),
   login: (payload) => request('/auth/login', { method: 'POST', body: payload, auth: false }),
   me: () => request('/me'),
+  profileSchema: () => request('/profile/schema', { auth: false }),
   interviewSchema: () => request('/interview/schema', { auth: false }),
   submitInterview: (answers) => request('/interview', { method: 'POST', body: answers }),
   matchStatus: () => request('/match/status'),
   findMatch: () => request('/match/find', { method: 'POST' }),
-  respondToMatch: (id, response) =>
-    request(`/match/${id}/respond`, { method: 'POST', body: { response } }),
+  respondToMatch: (id, response, slotIds) =>
+    request(`/match/${id}/respond`, { method: 'POST', body: { response, slotIds } }),
 };

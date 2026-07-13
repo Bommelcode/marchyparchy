@@ -1,34 +1,46 @@
 # Blind Date
 
-A dating app that skips profile-swiping. Users answer a short interview
-(interests, personality, preferred date activities, availability), a
-compatibility matcher pairs them up, and each pair gets a concrete blind-date
-proposal (coffee, a walk, sport, etc.) at a time that works for both. No
-photos, no browsing — just accept or decline the date.
+Een datingapp naar het model van [Breeze](https://breeze.social/nl), gericht op
+dezelfde doelgroep: hoogopgeleide young professionals (±20-35) die klaar zijn
+met swipen en eindeloos chatten. Kort interview, matchen op compatibiliteit,
+en bij een match meteen een **datumprikker** voor een echte date op een
+partnerlocatie in je eigen stad. Geen chat — alleen komen opdagen.
 
-## Structure
+## Breeze-mechanics in deze app
 
-- `server/` — Express API, JWT auth, JSON-file datastore, matching + date
-  proposal logic (`src/matching.js`).
-- `client/` — React (Vite) frontend: signup/login, interview form, and a
-  dashboard for finding a match and responding to date proposals.
+- **Profiel**: geboortejaar, stad en opleidingsniveau (mbo/hbo/wo).
+- **Matching**: harde filter op stad; leeftijdsverschil en opleidingsniveau
+  wegen mee naast interesses, persoonlijkheid, date-voorkeuren en
+  beschikbaarheid.
+- **Datumprikker**: bij een match krijgen beide gebruikers max. 3 concrete
+  tijdsloten uit hun overlappende beschikbaarheid. Een gedeeld geprikt slot
+  maakt de date definitief.
+- **Partnerlocaties**: elk datevoorstel noemt een concrete horecazaak of plek
+  per stad en activiteit (borrel, koffie, sportief, wandeling, diner) —
+  "eerste drankje geregeld", à la Breeze's horecapartners.
+- **Commitment-regel**: wie twee keer een datumprikker afwijst, wordt
+  gepauzeerd. De app is voor mensen die écht op date willen.
 
-## Run locally
+## Structuur
+
+- `server/` — Express-API, JWT-auth, JSON-bestand als datastore. Matching- en
+  datumprikkerlogica in `src/matching.js`, partnerlocaties in `src/venues.js`.
+- `client/` — React (Vite) frontend, volledig Nederlandstalig: registratie,
+  interview en een dashboard met datumprikker.
+
+## Lokaal draaien
 
 ```sh
 cd server && npm install && npm run dev   # http://localhost:4000
 cd client && npm install && npm run dev   # http://localhost:5173
 ```
 
-The client talks to `http://localhost:4000/api` by default; override with
-`VITE_API_URL` if needed.
+De client praat standaard met `http://localhost:4000/api`; overschrijf met
+`VITE_API_URL` indien nodig.
 
-## How matching works
+## Nog niet gebouwd (ideeën)
 
-`server/src/matching.js` scores two completed interviews on interests,
-personality closeness, shared preferred activities, and availability overlap
-to produce a 0-100 compatibility score and a human-readable rationale. Once
-two users are matched, `proposeBlindDate` picks a shared activity and the
-nearest shared availability slot and turns it into a concrete date proposal
-(e.g. "Coffee, Saturday morning"). Both users must accept before the date is
-confirmed.
+- Dagelijkse matchdrop om 19:00 in plaats van een "zoek match"-knop
+- Betalen vooraf (~€7,50 incl. eerste drankje) en no-show-afhandeling
+- Profielverificatie/screening en feedback na de date
+- Echte partnerdatabase met beschikbaarheid per locatie

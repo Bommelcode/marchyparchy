@@ -3,17 +3,18 @@ import { Navigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
 
-const ACTIVITY_LABELS = {
-  coffee: 'Coffee',
-  sport: 'a sport / active date',
-  walk: 'a walk & talk',
-  dinner: 'dinner',
-  museum: 'a museum / culture date',
-};
+function toggle(list, value) {
+  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+}
+
+function slotLabel(slot) {
+  return `${slot.day} ${slot.date} · ${slot.timeOfDay}`;
+}
 
 export default function Dashboard() {
-  const { user } = useAuth();
-  const [match, setMatch] = useState(undefined); // undefined = loading
+  const { user, refresh } = useAuth();
+  const [match, setMatch] = useState(undefined); // undefined = laden
+  const [pickedSlots, setPickedSlots] = useState([]);
   const [message, setMessage] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -42,7 +43,8 @@ export default function Dashboard() {
     try {
       const result = await api.findMatch();
       setMatch(result.match);
-      if (!result.match) setMessage(result.message || 'No compatible candidates yet.');
+      setPickedSlots([]);
+      if (!result.match) setMessage(result.message || 'Nog geen match gevonden.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -50,13 +52,20 @@ export default function Dashboard() {
     }
   }
 
-  async function handleRespond(response) {
+  async function handleAccept() {
     setBusy(true);
     setError(null);
     try {
-      const result = await api.respondToMatch(match.id, response);
-      setMatch(result.match.status === 'declined' ? null : result.match);
-      if (response === 'decline') setMessage('No worries — find another match below.');
+      const result = await api.respondToMatch(match.id, 'accept', pickedSlots);
+      await refresh();
+      if (result.match.status === 'no_overlap') {
+        setMatch(null);
+        setMessage(
+          'Jullie wilden allebei, maar prikten geen gedeeld moment. Geen zorgen — zoek hieronder een nieuwe match.'
+        );
+      } else {
+        setMatch(result.match);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -64,58 +73,105 @@ export default function Dashboard() {
     }
   }
 
-  if (match === undefined) return <div className="card">Loading…</div>;
+  async function handleDecline() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.respondToMatch(match.id, 'decline');
+      await refresh();
+      setMatch(null);
+      setMessage('Datumprikker afgewezen.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (user?.paused) {
+    return (
+      <div className="card">
+        <h1>Account gepauzeerd</h1>
+        <p>
+          Je hebt twee keer een datumprikker afgewezen. Blind Date is voor mensen die écht op
+          date willen — daarom staat je account nu op pauze.
+        </p>
+      </div>
+    );
+  }
+
+  if (match === undefined) return <div className="card">Laden…</div>;
 
   return (
     <div className="card wide">
-      <h1>Hi {user?.firstName} 👋</h1>
+      <h1>Hoi {user?.firstName} 👋</h1>
+
+      {user?.strikes === 1 && !match && (
+        <p className="error">
+          Let op: je hebt één datumprikker afgewezen. Wijs je er nog één af, dan pauzeren we je
+          account.
+        </p>
+      )}
 
       {!match && (
         <div>
-          <p className="muted">{message || "You don't have an active match yet."}</p>
+          <p className="muted">{message || 'Je hebt nog geen actieve match.'}</p>
           <button onClick={handleFindMatch} disabled={busy}>
-            {busy ? 'Searching…' : 'Find my match'}
+            {busy ? 'Zoeken…' : 'Vind mijn match'}
           </button>
         </div>
       )}
 
       {match && (
         <div className="match-card">
-          <p className="score">{match.score}% compatibility with {match.partner.firstName}</p>
+          <p className="score">
+            {match.score}% match met {match.partner.firstName} ({match.partner.age},{' '}
+            {match.partner.education.toUpperCase()})
+          </p>
           <p>{match.rationale}</p>
 
           <div className="proposal">
-            <h2>Proposed blind date</h2>
-            <p>
-              {ACTIVITY_LABELS[match.proposal.activityId] || match.proposal.activityLabel} at{' '}
-              {match.proposal.venue}
-            </p>
-            <p>
-              {match.proposal.day.toUpperCase()} {match.proposal.date} —{' '}
-              {match.proposal.timeOfDay}
-            </p>
+            <h2>
+              {match.datePicker.activityLabel} bij {match.datePicker.venue}
+            </h2>
+            <p className="muted">{match.datePicker.city} · eerste drankje geregeld</p>
+
+            {match.status === 'confirmed' ? (
+              <p className="success">
+                De date staat: {slotLabel(match.confirmedSlot)}. Je hoeft alleen maar te komen
+                opdagen. 🎉
+              </p>
+            ) : match.yourResponse ? (
+              <p className="muted">
+                Jij hebt geprikt — nu {match.partner.firstName} nog. We laten het weten zodra de
+                date vaststaat.
+              </p>
+            ) : (
+              <>
+                <p>Prik de momenten waarop jij kunt:</p>
+                <div className="chip-row">
+                  {match.datePicker.slots.map((slot) => (
+                    <button
+                      type="button"
+                      key={slot.id}
+                      className={`chip ${pickedSlots.includes(slot.id) ? 'selected' : ''}`}
+                      onClick={() => setPickedSlots(toggle(pickedSlots, slot.id))}
+                    >
+                      {slotLabel(slot)}
+                    </button>
+                  ))}
+                </div>
+                <div className="actions">
+                  <button onClick={handleAccept} disabled={busy || pickedSlots.length === 0}>
+                    Prik deze momenten
+                  </button>
+                  <button className="secondary" onClick={handleDecline} disabled={busy}>
+                    Afwijzen
+                  </button>
+                </div>
+              </>
+            )}
           </div>
-
-          {match.status === 'proposed' && !match.yourResponse && (
-            <div className="actions">
-              <button onClick={() => handleRespond('accept')} disabled={busy}>
-                Accept
-              </button>
-              <button className="secondary" onClick={() => handleRespond('decline')} disabled={busy}>
-                Decline
-              </button>
-            </div>
-          )}
-
-          {match.status === 'proposed' && match.yourResponse === 'accept' && (
-            <p className="muted">You're in! Waiting on {match.partner.firstName} to respond…</p>
-          )}
-
-          {match.status === 'confirmed' && (
-            <p className="success">
-              It's a date! You and {match.partner.firstName} both said yes.
-            </p>
-          )}
         </div>
       )}
 

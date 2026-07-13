@@ -50,18 +50,18 @@ export default function Interview() {
     }
   }
 
-  if (!schema) return <div className="card">Loading interview…</div>;
+  if (!schema) return <div className="card">Interview laden…</div>;
 
   return (
     <div className="card wide">
-      <h1>A few quick questions</h1>
+      <h1>Een paar korte vragen</h1>
       <p className="muted">
-        We use this to find someone compatible, then set up a low-pressure first date — no
-        endless swiping.
+        Hiermee zoeken we iemand die bij je past en plannen we meteen een eerste date —
+        geen geswipe, geen gechat.
       </p>
       <form onSubmit={handleSubmit}>
         <fieldset>
-          <legend>What are you into? (pick a few)</legend>
+          <legend>Waar word je blij van? (kies er een paar)</legend>
           <div className="chip-row">
             {schema.interests.map((interest) => (
               <button
@@ -77,7 +77,7 @@ export default function Interview() {
         </fieldset>
 
         <fieldset>
-          <legend>How would you describe yourself?</legend>
+          <legend>Hoe zou je jezelf omschrijven?</legend>
           {schema.personalityTraits.map((trait) => (
             <label key={trait.id} className="slider-row">
               <span>{trait.left}</span>
@@ -96,7 +96,7 @@ export default function Interview() {
         </fieldset>
 
         <fieldset>
-          <legend>What kind of first date sounds good?</legend>
+          <legend>Wat voor eerste date zie je zitten?</legend>
           <div className="chip-row">
             {schema.dateActivities.map((activity) => (
               <button
@@ -112,7 +112,7 @@ export default function Interview() {
         </fieldset>
 
         <fieldset>
-          <legend>When are you usually free?</legend>
+          <legend>Wanneer kun je meestal?</legend>
           <div className="chip-row">
             {schema.days.map((day) => (
               <button
@@ -141,7 +141,7 @@ export default function Interview() {
 
         {error && <p className="error">{error}</p>}
         <button type="submit" disabled={busy}>
-          {busy ? 'Saving…' : 'Find my match'}
+          {busy ? 'Opslaan…' : 'Vind mijn match'}
         </button>
       </form>
     </div>

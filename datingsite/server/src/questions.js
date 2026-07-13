@@ -1,25 +1,33 @@
 export const INTERESTS = [
-  'hiking', 'movies', 'coffee', 'sports', 'reading',
-  'cooking', 'travel', 'gaming', 'music', 'art',
+  'wandelen', 'films', 'koffie', 'sport', 'lezen',
+  'koken', 'reizen', 'gamen', 'muziek', 'kunst',
+  'festivals', 'ondernemen',
 ];
+
+export const CITIES = [
+  'Amsterdam', 'Rotterdam', 'Den Haag', 'Utrecht',
+  'Eindhoven', 'Groningen', 'Breda',
+];
+
+export const EDUCATION_LEVELS = ['mbo', 'hbo', 'wo'];
 
 export const DATE_ACTIVITIES = [
-  { id: 'coffee', label: 'Coffee', venue: 'a cozy local coffee shop' },
-  { id: 'sport', label: 'Sport / active date', venue: 'the park for a light workout or walk' },
-  { id: 'walk', label: 'Walk & talk', venue: 'a scenic walking trail' },
-  { id: 'dinner', label: 'Dinner', venue: 'a casual neighborhood restaurant' },
-  { id: 'museum', label: 'Museum / culture', venue: 'a local museum or gallery' },
+  { id: 'borrel', label: 'Borrel' },
+  { id: 'koffie', label: 'Koffie' },
+  { id: 'sportief', label: 'Sportieve date' },
+  { id: 'wandelen', label: 'Wandeling' },
+  { id: 'diner', label: 'Diner' },
 ];
 
-export const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-export const TIMES_OF_DAY = ['morning', 'afternoon', 'evening'];
+export const DAYS = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'];
+export const TIMES_OF_DAY = ['ochtend', 'middag', 'avond'];
 
-// Likert-scale personality traits, 1-5 (1 = left label, 5 = right label)
+// Likert-persoonlijkheidsschalen, 1-5 (1 = linkerlabel, 5 = rechterlabel)
 export const PERSONALITY_TRAITS = [
-  { id: 'social', left: 'introvert', right: 'extrovert' },
-  { id: 'planning', left: 'planner', right: 'spontaneous' },
-  { id: 'risk', left: 'cautious', right: 'adventurous' },
-  { id: 'pace', left: 'homebody', right: 'always out' },
+  { id: 'social', left: 'introvert', right: 'extravert' },
+  { id: 'planning', left: 'planner', right: 'spontaan' },
+  { id: 'risk', left: 'voorzichtig', right: 'avontuurlijk' },
+  { id: 'pace', left: 'huismus', right: 'altijd op pad' },
 ];
 
 export const INTERVIEW_SCHEMA = {
@@ -30,44 +38,64 @@ export const INTERVIEW_SCHEMA = {
   personalityTraits: PERSONALITY_TRAITS,
 };
 
+export const PROFILE_SCHEMA = {
+  cities: CITIES,
+  educationLevels: EDUCATION_LEVELS,
+  minAge: 18,
+};
+
+export function validateProfile({ birthYear, city, education }) {
+  const currentYear = new Date().getFullYear();
+  if (typeof birthYear !== 'number' || currentYear - birthYear < 18 || currentYear - birthYear > 99) {
+    return 'Vul een geldig geboortejaar in (18+)';
+  }
+  if (!CITIES.includes(city)) {
+    return 'Kies een stad uit de lijst';
+  }
+  if (!EDUCATION_LEVELS.includes(education)) {
+    return 'Kies een opleidingsniveau';
+  }
+  return null;
+}
+
 export function validateInterview(answers) {
-  if (!answers || typeof answers !== 'object') return 'Missing answers';
+  if (!answers || typeof answers !== 'object') return 'Antwoorden ontbreken';
 
   const { interests, personality, preferredActivities, availability } = answers;
 
   if (!Array.isArray(interests) || interests.length === 0) {
-    return 'Pick at least one interest';
+    return 'Kies minstens één interesse';
   }
   if (!interests.every((i) => INTERESTS.includes(i))) {
-    return 'Unknown interest value';
+    return 'Onbekende interesse';
   }
 
-  if (!personality || typeof personality !== 'object') return 'Missing personality answers';
+  if (!personality || typeof personality !== 'object') return 'Persoonlijkheidsvragen ontbreken';
   for (const trait of PERSONALITY_TRAITS) {
     const v = personality[trait.id];
     if (typeof v !== 'number' || v < 1 || v > 5) {
-      return `personality.${trait.id} must be a number 1-5`;
+      return `personality.${trait.id} moet een getal 1-5 zijn`;
     }
   }
 
   if (!Array.isArray(preferredActivities) || preferredActivities.length === 0) {
-    return 'Pick at least one preferred date activity';
+    return 'Kies minstens één soort date';
   }
   if (!preferredActivities.every((a) => DATE_ACTIVITIES.some((d) => d.id === a))) {
-    return 'Unknown date activity value';
+    return 'Onbekend soort date';
   }
 
-  if (!availability || typeof availability !== 'object') return 'Missing availability';
+  if (!availability || typeof availability !== 'object') return 'Beschikbaarheid ontbreekt';
   const { days, timesOfDay } = availability;
   if (!Array.isArray(days) || days.length === 0 || !days.every((d) => DAYS.includes(d))) {
-    return 'availability.days must be a non-empty list of valid days';
+    return 'Kies minstens één dag waarop je kunt';
   }
   if (
     !Array.isArray(timesOfDay) ||
     timesOfDay.length === 0 ||
     !timesOfDay.every((t) => TIMES_OF_DAY.includes(t))
   ) {
-    return 'availability.timesOfDay must be a non-empty list of valid times';
+    return 'Kies minstens één dagdeel';
   }
 
   return null;
