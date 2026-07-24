@@ -97,11 +97,36 @@
   .leaflet-popup-tip { background: #12181f; }
   .leaflet-control-attribution { background: rgba(16,21,28,0.75) !important; color: var(--muted) !important; }
   .leaflet-control-attribution a { color: var(--accent-2) !important; }
+
+  #loadError {
+    position: absolute;
+    inset: 0;
+    z-index: 2000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    background: rgba(16, 21, 28, 0.96);
+  }
+  #loadError.show { display: flex; }
+  #loadError div { max-width: 420px; font-size: 14px; line-height: 1.6; }
+  #loadError h3 { margin: 0 0 8px; color: var(--accent); }
 </style>
 </head>
 <body>
 
 <div id="map"></div>
+<div id="loadError">
+  <div>
+    <h3>&#9888; Kaarttegels laden niet</h3>
+    <p>
+      De satellietfoto (server.arcgisonline.com) komt niet binnen. Dit ligt niet aan deze pagina zelf, maar meestal aan:
+      een adblocker/privacy-extensie die kaarttegels blokkeert, een bedrijfs- of schoolnetwerk/firewall die deze domeinen blokkeert,
+      of geen internetverbinding. Probeer een andere browser/netwerk, of schakel de adblocker voor deze pagina uit.
+    </p>
+  </div>
+</div>
 
 <div id="hud" class="panel">
   <button id="gearBtn" title="Instellingen (FIRMS-key)">&#9881;</button>
@@ -122,7 +147,7 @@
   <div id="status"><span id="liveDot"></span> <span id="statusText">laden…</span></div>
 
   <div class="legend">
-    <div class="item"><span class="dot" style="background:#ff3b1f; box-shadow:0 0 4px #ff3b1f;"></span> Actieve-brand-detectie (VIIRS)</div>
+    <div class="item"><span class="dot" style="background:#ff3b1f; box-shadow:0 0 4px #ff3b1f;"></span> Actieve-brand-detectie (VIIRS) — aan te zetten via de laag-schakelaar linksonder</div>
     <div class="item"><span class="dot" style="background:#3388ff;"></span> Madrid (referentiepunt)</div>
     Detecties komen van satellietoverpassen (enkele keren per dag), dus dit is "live" op enkele uren na — geen doorlopend videobeeld. Standaard staat de datum op gisteren (UTC), want data van vandaag is vaak nog niet compleet.
   </div>
@@ -184,6 +209,14 @@ var esriSat = L.tileLayer(
   { maxZoom: 19, attribution: "Satellietbeeld &copy; Esri, Maxar, Earthstar Geographics", errorTileUrl: TRANSPARENT_PX }
 ).addTo(map);
 
+// Zichtbare foutmelding i.p.v. stil zwart scherm als de basiskaart echt niet kan laden
+// (adblocker, firewall, geen internet) — anders zie je alleen een leeg/donker vlak.
+var esriLoadedOk = false;
+esriSat.on("load", function () { esriLoadedOk = true; document.getElementById("loadError").classList.remove("show"); });
+esriSat.on("tileerror", function () {
+  if (!esriLoadedOk) document.getElementById("loadError").classList.add("show");
+});
+
 // NASA GIBS levert voor "vandaag" (UTC) vaak nog geen of onvolledige tegels —
 // en serveert dan een ondoorzichtige zwarte tegel i.p.v. niets, wat de hele
 // kaart zwart laat lijken. Gisteren (UTC) heeft altijd volledig verwerkte data.
@@ -194,15 +227,20 @@ var nasaTrueColor = L.tileLayer(
   { maxZoom: 19, maxNativeZoom: 9, tileSize: 256, attribution: "Imagery &copy; NASA GIBS / VIIRS SNPP", errorTileUrl: TRANSPARENT_PX }
 );
 
+// Deze twee lagen staan bewust NIET standaard aan: de exacte GIBS-tegelparameters
+// (laagnaam/matrixset) konden niet live geverifieerd worden, en een foutieve tegel-
+// respons kan het hele kaartbeeld overdekken. Zet ze aan via de laag-schakelaar
+// linksonder; als het beeld dan zwart wordt, zet je 'm gewoon weer uit — de
+// satellietfoto (Esri) blijft in dat geval altijd zichtbaar.
 var fireSNPP = L.tileLayer(
   gibsUrl("VIIRS_SNPP_Thermal_Anomalies_375m_All", currentDate, "png", "GoogleMapsCompatible_Level7"),
-  { maxZoom: 19, maxNativeZoom: 7, tileSize: 256, opacity: 0.95, attribution: "Fire data &copy; NASA FIRMS/GIBS (VIIRS Suomi NPP)", errorTileUrl: TRANSPARENT_PX }
-).addTo(map);
+  { maxZoom: 19, maxNativeZoom: 7, tileSize: 256, opacity: 0.85, attribution: "Fire data &copy; NASA FIRMS/GIBS (VIIRS Suomi NPP)", errorTileUrl: TRANSPARENT_PX }
+);
 
 var fireNOAA20 = L.tileLayer(
   gibsUrl("VIIRS_NOAA20_Thermal_Anomalies_375m_All", currentDate, "png", "GoogleMapsCompatible_Level7"),
-  { maxZoom: 19, maxNativeZoom: 7, tileSize: 256, opacity: 0.95, attribution: "Fire data &copy; NASA FIRMS/GIBS (VIIRS NOAA-20)", errorTileUrl: TRANSPARENT_PX }
-).addTo(map);
+  { maxZoom: 19, maxNativeZoom: 7, tileSize: 256, opacity: 0.85, attribution: "Fire data &copy; NASA FIRMS/GIBS (VIIRS NOAA-20)", errorTileUrl: TRANSPARENT_PX }
+);
 
 var timeLayers = [nasaTrueColor, fireSNPP, fireNOAA20];
 
