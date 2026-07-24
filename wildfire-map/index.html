@@ -111,7 +111,7 @@
   <div class="row">
     <label for="dateInput">Datum</label>
     <input type="date" id="dateInput">
-    <button id="todayBtn">Nu</button>
+    <button id="todayBtn" title="Data van vandaag kan nog leeg of onvolledig zijn">Vandaag</button>
   </div>
   <div class="row">
     <label>&nbsp;</label>
@@ -124,7 +124,7 @@
   <div class="legend">
     <div class="item"><span class="dot" style="background:#ff3b1f; box-shadow:0 0 4px #ff3b1f;"></span> Actieve-brand-detectie (VIIRS)</div>
     <div class="item"><span class="dot" style="background:#3388ff;"></span> Madrid (referentiepunt)</div>
-    Detecties komen van satellietoverpassen (enkele keren per dag), dus dit is "live" op enkele uren na — geen doorlopend videobeeld.
+    Detecties komen van satellietoverpassen (enkele keren per dag), dus dit is "live" op enkele uren na — geen doorlopend videobeeld. Standaard staat de datum op gisteren (UTC), want data van vandaag is vaak nog niet compleet.
   </div>
 
   <div id="settings">
@@ -161,6 +161,12 @@ function todayUTC() {
   return d.toISOString().slice(0, 10);
 }
 
+function yesterdayUTC() {
+  var d = new Date();
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
 function gibsUrl(layer, date, ext, matrixSet) {
   return "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/" + layer + "/default/" + date + "/" + matrixSet + "/{z}/{y}/{x}." + ext;
 }
@@ -175,10 +181,13 @@ L.marker(MADRID, {
 
 var esriSat = L.tileLayer(
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-  { maxZoom: 19, attribution: "Satellietbeeld &copy; Esri, Maxar, Earthstar Geographics" }
+  { maxZoom: 19, attribution: "Satellietbeeld &copy; Esri, Maxar, Earthstar Geographics", errorTileUrl: TRANSPARENT_PX }
 ).addTo(map);
 
-var currentDate = todayUTC();
+// NASA GIBS levert voor "vandaag" (UTC) vaak nog geen of onvolledige tegels —
+// en serveert dan een ondoorzichtige zwarte tegel i.p.v. niets, wat de hele
+// kaart zwart laat lijken. Gisteren (UTC) heeft altijd volledig verwerkte data.
+var currentDate = yesterdayUTC();
 
 var nasaTrueColor = L.tileLayer(
   gibsUrl("VIIRS_SNPP_CorrectedReflectance_TrueColor", currentDate, "jpg", "GoogleMapsCompatible_Level9"),
@@ -393,11 +402,9 @@ function refreshFires() {
 setStatus("geladen");
 refreshFires();
 setInterval(function () {
-  if (currentDate === todayUTC()) {
-    timeLayers.forEach(function (l) { l.redraw(); });
-    refreshFires();
-    setStatus("automatisch ververst");
-  }
+  timeLayers.forEach(function (l) { l.redraw(); });
+  refreshFires();
+  setStatus("automatisch ververst");
 }, REFRESH_MS);
 </script>
 </body>
