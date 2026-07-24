@@ -147,14 +147,14 @@
   <div id="status"><span id="liveDot"></span> <span id="statusText">laden…</span></div>
 
   <div class="legend">
-    <div class="item"><span class="dot" style="background:#ff3b1f; box-shadow:0 0 4px #ff3b1f;"></span> Actieve-brand-detectie (VIIRS) — aan te zetten via de laag-schakelaar linksonder</div>
+    <div class="item"><span class="dot" style="background:#ff3b1f; box-shadow:0 0 4px #ff3b1f;"></span> Actieve-brand-detectie (VIIRS) — vereist gratis FIRMS-key, klik op &#9881;</div>
     <div class="item"><span class="dot" style="background:#3388ff;"></span> Madrid (referentiepunt)</div>
     Detecties komen van satellietoverpassen (enkele keren per dag), dus dit is "live" op enkele uren na — geen doorlopend videobeeld. Standaard staat de datum op gisteren (UTC), want data van vandaag is vaak nog niet compleet.
   </div>
 
   <div id="settings">
     <p>
-      Voor een lijst van individuele branden (i.p.v. alleen de kaartlaag) heb je een gratis NASA FIRMS MAP_KEY nodig.
+      Om branden op de kaart te zien (rode stippen + lijst met details) heb je een gratis NASA FIRMS MAP_KEY nodig — duurt ~1 minuut om aan te vragen, geen kosten.
       Vraag er een aan via <a href="https://firms.modaps.eosdis.nasa.gov/api/map_key/" target="_blank" rel="noopener">firms.modaps.eosdis.nasa.gov/api/map_key</a>
       en plak hem hieronder. Hij wordt alleen lokaal in je browser opgeslagen.
     </p>
@@ -227,26 +227,16 @@ var nasaTrueColor = L.tileLayer(
   { maxZoom: 19, maxNativeZoom: 9, tileSize: 256, attribution: "Imagery &copy; NASA GIBS / VIIRS SNPP", errorTileUrl: TRANSPARENT_PX }
 );
 
-// Deze twee lagen staan bewust NIET standaard aan: de exacte GIBS-tegelparameters
-// (laagnaam/matrixset) konden niet live geverifieerd worden, en een foutieve tegel-
-// respons kan het hele kaartbeeld overdekken. Zet ze aan via de laag-schakelaar
-// linksonder; als het beeld dan zwart wordt, zet je 'm gewoon weer uit — de
-// satellietfoto (Esri) blijft in dat geval altijd zichtbaar.
-var fireSNPP = L.tileLayer(
-  gibsUrl("VIIRS_SNPP_Thermal_Anomalies_375m_All", currentDate, "png", "GoogleMapsCompatible_Level7"),
-  { maxZoom: 19, maxNativeZoom: 7, tileSize: 256, opacity: 0.85, attribution: "Fire data &copy; NASA FIRMS/GIBS (VIIRS Suomi NPP)", errorTileUrl: TRANSPARENT_PX }
-);
-
-var fireNOAA20 = L.tileLayer(
-  gibsUrl("VIIRS_NOAA20_Thermal_Anomalies_375m_All", currentDate, "png", "GoogleMapsCompatible_Level7"),
-  { maxZoom: 19, maxNativeZoom: 7, tileSize: 256, opacity: 0.85, attribution: "Fire data &copy; NASA FIRMS/GIBS (VIIRS NOAA-20)", errorTileUrl: TRANSPARENT_PX }
-);
-
-var timeLayers = [nasaTrueColor, fireSNPP, fireNOAA20];
+// De NASA GIBS thermal-anomalies rasterlagen zijn eruit gehaald: die tegels bleken
+// in de praktijk grijs/zwart (foute laag-/matrixset-parameters die niet live te
+// verifiëren waren vanuit de ontwikkelomgeving). Branden worden nu getoond als
+// individuele punten via de officieel gedocumenteerde NASA FIRMS Area API
+// (zie refreshFires()) — betrouwbaarder én met details per detectie i.p.v. een gok.
+var timeLayers = [nasaTrueColor];
 
 L.control.layers(
   { "Satellietfoto (Esri, hoge resolutie)": esriSat, "NASA satellietbeeld (van gekozen datum)": nasaTrueColor },
-  { "&#128293; Branden — VIIRS Suomi NPP": fireSNPP, "&#128293; Branden — VIIRS NOAA-20": fireNOAA20 },
+  {},
   { collapsed: false, position: "bottomleft" }
 ).addTo(map);
 
@@ -255,14 +245,7 @@ var fireMarkersLayer = L.layerGroup().addTo(map);
 function setDate(dateStr) {
   currentDate = dateStr;
   document.getElementById("dateInput").value = dateStr;
-  timeLayers.forEach(function (layer) {
-    var base = layer === nasaTrueColor
-      ? gibsUrl("VIIRS_SNPP_CorrectedReflectance_TrueColor", dateStr, "jpg", "GoogleMapsCompatible_Level9")
-      : layer === fireSNPP
-      ? gibsUrl("VIIRS_SNPP_Thermal_Anomalies_375m_All", dateStr, "png", "GoogleMapsCompatible_Level7")
-      : gibsUrl("VIIRS_NOAA20_Thermal_Anomalies_375m_All", dateStr, "png", "GoogleMapsCompatible_Level7");
-    layer.setUrl(base);
-  });
+  nasaTrueColor.setUrl(gibsUrl("VIIRS_SNPP_CorrectedReflectance_TrueColor", dateStr, "jpg", "GoogleMapsCompatible_Level9"));
   refreshFires();
   setStatus("bijgewerkt");
 }
