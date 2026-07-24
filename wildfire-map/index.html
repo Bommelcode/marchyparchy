@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Madrid Bosbrandenkaart — live</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #10151c;
+    --panel: rgba(18, 24, 32, 0.92);
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --text: #e8edf2;
+    --muted: #93a2b3;
+    --accent: #ff5a3c;
+    --accent-2: #ffb020;
+    --good: #4ad991;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--text); }
+  #map { position: absolute; inset: 0; background: #0b0f14; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    color: var(--text);
+  }
+
+  #hud {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 1000;
+    width: 300px;
+    max-width: calc(100vw - 24px);
+    padding: 14px 16px;
+    font-size: 13px;
+  }
+  #hud h1 { font-size: 15px; margin: 0 0 2px; display: flex; align-items: center; gap: 6px; }
+  #hud .sub { color: var(--muted); margin: 0 0 12px; font-size: 12px; }
+
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .row label { color: var(--muted); font-size: 12px; min-width: 66px; }
+  input[type="date"], input[type="text"] {
+    background: #0d1218; border: 1px solid var(--panel-border); color: var(--text);
+    border-radius: 6px; padding: 5px 8px; font-size: 12px; flex: 1; min-width: 0;
+  }
+  button {
+    background: #1a2330; border: 1px solid var(--panel-border); color: var(--text);
+    border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+  }
+  button:hover { background: #232f40; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #1a0a06; font-weight: 600; }
+  button.primary:hover { filter: brightness(1.1); }
+
+  #liveDot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); display: inline-block; box-shadow: 0 0 6px var(--good); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+  #status { color: var(--muted); font-size: 11px; margin-top: 4px; line-height: 1.5; }
+
+  .legend { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--panel-border); font-size: 11px; color: var(--muted); }
+  .legend .item { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  #gearBtn { position: absolute; top: 8px; right: 8px; background: none; border: none; color: var(--muted); font-size: 14px; padding: 2px 6px; }
+  #settings { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--panel-border); }
+  #settings.open { display: block; }
+  #settings p { font-size: 11px; color: var(--muted); margin: 0 0 8px; line-height: 1.5; }
+  #settings a { color: var(--accent-2); }
+
+  #firePanel {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 1000;
+    width: 270px;
+    max-width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    padding: 12px 14px;
+    font-size: 12px;
+    display: none;
+  }
+  #firePanel.open { display: block; }
+  #firePanel h2 { font-size: 13px; margin: 0 0 8px; }
+  #fireList .fire-item { padding: 8px 0; border-top: 1px solid var(--panel-border); cursor: pointer; }
+  #fireList .fire-item:first-child { border-top: none; }
+  #fireList .fire-item:hover { background: rgba(255,255,255,0.03); }
+  #fireList .fire-item .loc { font-weight: 600; }
+  #fireList .fire-item .meta { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  #fireEmpty { color: var(--muted); font-size: 11px; }
+
+  .leaflet-popup-content-wrapper { background: #12181f; color: var(--text); border-radius: 8px; }
+  .leaflet-popup-tip { background: #12181f; }
+  .leaflet-control-attribution { background: rgba(16,21,28,0.75) !important; color: var(--muted) !important; }
+  .leaflet-control-attribution a { color: var(--accent-2) !important; }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="hud" class="panel">
+  <button id="gearBtn" title="Instellingen (FIRMS-key)">&#9881;</button>
+  <h1>&#128293; Madrid Bosbrandenkaart</h1>
+  <p class="sub">Live satellietbeeld + actieve-brand-detecties (NASA)</p>
+
+  <div class="row">
+    <label for="dateInput">Datum</label>
+    <input type="date" id="dateInput">
+    <button id="todayBtn">Nu</button>
+  </div>
+  <div class="row">
+    <label>&nbsp;</label>
+    <button id="refreshBtn">&#128260; Ververs</button>
+    <button id="fireListBtn">Brandenlijst</button>
+  </div>
+
+  <div id="status"><span id="liveDot"></span> <span id="statusText">laden…</span></div>
+
+  <div class="legend">
+    <div class="item"><span class="dot" style="background:#ff3b1f; box-shadow:0 0 4px #ff3b1f;"></span> Actieve-brand-detectie (VIIRS)</div>
+    <div class="item"><span class="dot" style="background:#3388ff;"></span> Madrid (referentiepunt)</div>
+    Detecties komen van satellietoverpassen (enkele keren per dag), dus dit is "live" op enkele uren na — geen doorlopend videobeeld.
+  </div>
+
+  <div id="settings">
+    <p>
+      Voor een lijst van individuele branden (i.p.v. alleen de kaartlaag) heb je een gratis NASA FIRMS MAP_KEY nodig.
+      Vraag er een aan via <a href="https://firms.modaps.eosdis.nasa.gov/api/map_key/" target="_blank" rel="noopener">firms.modaps.eosdis.nasa.gov/api/map_key</a>
+      en plak hem hieronder. Hij wordt alleen lokaal in je browser opgeslagen.
+    </p>
+    <div class="row">
+      <input type="text" id="mapKeyInput" placeholder="FIRMS MAP_KEY">
+      <button id="saveKeyBtn" class="primary">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<div id="firePanel" class="panel">
+  <h2>Actieve branden — regio Madrid</h2>
+  <div id="fireEmpty">Geen FIRMS-key ingesteld. Klik op &#9881; om er een toe te voegen voor een lijst met losse detecties.</div>
+  <div id="fireList"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+"use strict";
+
+var MADRID = [40.4168, -3.7038];
+// west,south,east,north — Comunidad de Madrid + aangrenzende brandgevoelige sierra's
+var FIRMS_BBOX = "-5.2,39.6,-2.6,41.3";
+var TRANSPARENT_PX = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+var REFRESH_MS = 5 * 60 * 1000;
+
+function todayUTC() {
+  var d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+
+function gibsUrl(layer, date, ext, matrixSet) {
+  return "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/" + layer + "/default/" + date + "/" + matrixSet + "/{z}/{y}/{x}." + ext;
+}
+
+var map = L.map("map", { center: MADRID, zoom: 9, zoomControl: false });
+L.control.zoom({ position: "bottomright" }).addTo(map);
+L.control.scale({ position: "bottomleft", imperial: false }).addTo(map);
+
+L.marker(MADRID, {
+  icon: L.divIcon({ className: "", html: '<div style="width:10px;height:10px;border-radius:50%;background:#3388ff;border:2px solid #fff;box-shadow:0 0 4px #000;"></div>', iconSize: [10, 10] })
+}).addTo(map).bindPopup("Madrid");
+
+var esriSat = L.tileLayer(
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  { maxZoom: 19, attribution: "Satellietbeeld &copy; Esri, Maxar, Earthstar Geographics" }
+).addTo(map);
+
+var currentDate = todayUTC();
+
+var nasaTrueColor = L.tileLayer(
+  gibsUrl("VIIRS_SNPP_CorrectedReflectance_TrueColor", currentDate, "jpg", "GoogleMapsCompatible_Level9"),
+  { maxZoom: 19, maxNativeZoom: 9, tileSize: 256, attribution: "Imagery &copy; NASA GIBS / VIIRS SNPP", errorTileUrl: TRANSPARENT_PX }
+);
+
+var fireSNPP = L.tileLayer(
+  gibsUrl("VIIRS_SNPP_Thermal_Anomalies_375m_All", currentDate, "png", "GoogleMapsCompatible_Level7"),
+  { maxZoom: 19, maxNativeZoom: 7, tileSize: 256, opacity: 0.95, attribution: "Fire data &copy; NASA FIRMS/GIBS (VIIRS Suomi NPP)", errorTileUrl: TRANSPARENT_PX }
+).addTo(map);
+
+var fireNOAA20 = L.tileLayer(
+  gibsUrl("VIIRS_NOAA20_Thermal_Anomalies_375m_All", currentDate, "png", "GoogleMapsCompatible_Level7"),
+  { maxZoom: 19, maxNativeZoom: 7, tileSize: 256, opacity: 0.95, attribution: "Fire data &copy; NASA FIRMS/GIBS (VIIRS NOAA-20)", errorTileUrl: TRANSPARENT_PX }
+).addTo(map);
+
+var timeLayers = [nasaTrueColor, fireSNPP, fireNOAA20];
+
+L.control.layers(
+  { "Satellietfoto (Esri, hoge resolutie)": esriSat, "NASA satellietbeeld (van gekozen datum)": nasaTrueColor },
+  { "&#128293; Branden — VIIRS Suomi NPP": fireSNPP, "&#128293; Branden — VIIRS NOAA-20": fireNOAA20 },
+  { collapsed: false, position: "bottomleft" }
+).addTo(map);
+
+var fireMarkersLayer = L.layerGroup().addTo(map);
+
+function setDate(dateStr) {
+  currentDate = dateStr;
+  document.getElementById("dateInput").value = dateStr;
+  timeLayers.forEach(function (layer) {
+    var base = layer === nasaTrueColor
+      ? gibsUrl("VIIRS_SNPP_CorrectedReflectance_TrueColor", dateStr, "jpg", "GoogleMapsCompatible_Level9")
+      : layer === fireSNPP
+      ? gibsUrl("VIIRS_SNPP_Thermal_Anomalies_375m_All", dateStr, "png", "GoogleMapsCompatible_Level7")
+      : gibsUrl("VIIRS_NOAA20_Thermal_Anomalies_375m_All", dateStr, "png", "GoogleMapsCompatible_Level7");
+    layer.setUrl(base);
+  });
+  refreshFires();
+  setStatus("bijgewerkt");
+}
+
+function setStatus(extra) {
+  var now = new Date();
+  var hh = String(now.getHours()).padStart(2, "0");
+  var mm = String(now.getMinutes()).padStart(2, "0");
+  var ss = String(now.getSeconds()).padStart(2, "0");
+  document.getElementById("statusText").textContent =
+    "laatst " + extra + " om " + hh + ":" + mm + ":" + ss + " (lokale tijd) — datum " + currentDate + " UTC";
+}
+
+var dateInput = document.getElementById("dateInput");
+dateInput.value = currentDate;
+dateInput.max = todayUTC();
+dateInput.addEventListener("change", function () { setDate(dateInput.value); });
+
+document.getElementById("todayBtn").addEventListener("click", function () { setDate(todayUTC()); });
+document.getElementById("refreshBtn").addEventListener("click", function () {
+  timeLayers.forEach(function (l) { l.redraw(); });
+  refreshFires();
+  setStatus("ververst");
+});
+
+// --- Instellingen / FIRMS MAP_KEY ---
+var gearBtn = document.getElementById("gearBtn");
+var settings = document.getElementById("settings");
+gearBtn.addEventListener("click", function () { settings.classList.toggle("open"); });
+
+var mapKeyInput = document.getElementById("mapKeyInput");
+var storedKey = localStorage.getItem("firms_map_key") || "";
+mapKeyInput.value = storedKey;
+
+document.getElementById("saveKeyBtn").addEventListener("click", function () {
+  var key = mapKeyInput.value.trim();
+  if (key) { localStorage.setItem("firms_map_key", key); }
+  else { localStorage.removeItem("firms_map_key"); }
+  settings.classList.remove("open");
+  refreshFires();
+});
+
+document.getElementById("fireListBtn").addEventListener("click", function () {
+  document.getElementById("firePanel").classList.toggle("open");
+});
+
+function bearingCompass(fromLat, fromLng, toLat, toLng) {
+  var y = Math.sin((toLng - fromLng) * Math.PI / 180) * Math.cos(toLat * Math.PI / 180);
+  var x = Math.cos(fromLat * Math.PI / 180) * Math.sin(toLat * Math.PI / 180) -
+    Math.sin(fromLat * Math.PI / 180) * Math.cos(toLat * Math.PI / 180) * Math.cos((toLng - fromLng) * Math.PI / 180);
+  var brng = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  var dirs = ["N", "NO", "O", "ZO", "Z", "ZW", "W", "NW"];
+  return dirs[Math.round(brng / 45) % 8];
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  var R = 6371;
+  var dLat = (lat2 - lat1) * Math.PI / 180;
+  var dLon = (lon2 - lon1) * Math.PI / 180;
+  var a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function parseCsv(text) {
+  var lines = text.trim().split("\n");
+  if (lines.length < 2) return [];
+  var headers = lines[0].split(",").map(function (h) { return h.trim(); });
+  var rows = [];
+  for (var i = 1; i < lines.length; i++) {
+    var cols = lines[i].split(",");
+    if (cols.length !== headers.length) continue;
+    var row = {};
+    headers.forEach(function (h, idx) { row[h] = cols[idx].trim(); });
+    rows.push(row);
+  }
+  return rows;
+}
+
+function renderFireList(rows, errorMsg) {
+  var listEl = document.getElementById("fireList");
+  var emptyEl = document.getElementById("fireEmpty");
+  listEl.innerHTML = "";
+
+  if (errorMsg) {
+    emptyEl.textContent = errorMsg;
+    emptyEl.style.display = "block";
+    return;
+  }
+  if (!rows.length) {
+    emptyEl.textContent = "Geen actieve-brand-detecties in de regio voor " + currentDate + ".";
+    emptyEl.style.display = "block";
+    return;
+  }
+  emptyEl.style.display = "none";
+
+  rows
+    .slice()
+    .sort(function (a, b) { return parseFloat(b.frp || 0) - parseFloat(a.frp || 0); })
+    .slice(0, 25)
+    .forEach(function (r) {
+      var lat = parseFloat(r.latitude), lng = parseFloat(r.longitude);
+      var dist = haversineKm(MADRID[0], MADRID[1], lat, lng);
+      var dir = bearingCompass(MADRID[0], MADRID[1], lat, lng);
+
+      var item = document.createElement("div");
+      item.className = "fire-item";
+
+      var loc = document.createElement("div");
+      loc.className = "loc";
+      loc.textContent = Math.round(dist) + " km " + dir + " van Madrid";
+      item.appendChild(loc);
+
+      var meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent =
+        (r.acq_date || "") + " " + (r.acq_time || "") + " UTC · " +
+        (r.satellite || "") + " · vertrouwen: " + (r.confidence || "n/b") +
+        (r.frp ? " · FRP: " + r.frp + " MW" : "");
+      item.appendChild(meta);
+
+      item.addEventListener("click", function () { map.setView([lat, lng], 12); });
+      listEl.appendChild(item);
+    });
+}
+
+function refreshFires() {
+  fireMarkersLayer.clearLayers();
+  var key = localStorage.getItem("firms_map_key");
+  if (!key) {
+    renderFireList([], null);
+    document.getElementById("fireEmpty").textContent =
+      "Geen FIRMS-key ingesteld. Klik op ⚙ om er een toe te voegen voor een lijst met losse detecties.";
+    document.getElementById("fireEmpty").style.display = "block";
+    return;
+  }
+
+  var url = "https://firms.modaps.eosdis.nasa.gov/api/area/csv/" + encodeURIComponent(key) +
+    "/VIIRS_SNPP_NRT/" + FIRMS_BBOX + "/2/" + currentDate;
+
+  fetch(url)
+    .then(function (res) {
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.text();
+    })
+    .then(function (text) {
+      if (text.trim().toLowerCase().startsWith("invalid")) {
+        throw new Error("ongeldige MAP_KEY");
+      }
+      var rows = parseCsv(text);
+      rows.forEach(function (r) {
+        var lat = parseFloat(r.latitude), lng = parseFloat(r.longitude);
+        if (isNaN(lat) || isNaN(lng)) return;
+        var frp = parseFloat(r.frp) || 0;
+        var radius = 4 + Math.min(10, frp / 20);
+        var marker = L.circleMarker([lat, lng], {
+          radius: radius, color: "#ff3b1f", weight: 1, fillColor: "#ff3b1f", fillOpacity: 0.6
+        });
+        marker.bindPopup(
+          "<b>Actieve-brand-detectie</b><br>" +
+          (r.acq_date || "") + " " + (r.acq_time || "") + " UTC<br>" +
+          "Satelliet: " + (r.satellite || "n/b") + "<br>" +
+          "Vertrouwen: " + (r.confidence || "n/b") + "<br>" +
+          (r.frp ? "Stralingsvermogen (FRP): " + r.frp + " MW" : "")
+        );
+        marker.addTo(fireMarkersLayer);
+      });
+      renderFireList(rows, null);
+    })
+    .catch(function (err) {
+      renderFireList([], "Kon FIRMS-puntdata niet ophalen (" + err.message + "). De brandenlaag op het satellietbeeld werkt gewoon door — dit is alleen de detaillijst.");
+    });
+}
+
+// --- Live auto-refresh ---
+setStatus("geladen");
+refreshFires();
+setInterval(function () {
+  if (currentDate === todayUTC()) {
+    timeLayers.forEach(function (l) { l.redraw(); });
+    refreshFires();
+    setStatus("automatisch ververst");
+  }
+}, REFRESH_MS);
+</script>
+</body>
+</html>

@@ -21,6 +21,10 @@ A dev "⏭ skip stage" button is in the top right while iterating — bumps your
 
 Day 1 of the rebuild. Each stage is functional and balanced for ~5 min progression. Future ideas: random events (PR scandals, viral TikTok), employee personalities, a competitor chain.
 
+## Other projects in this repo
+
+- [`wildfire-map/`](wildfire-map/) — a standalone live wildfire-tracking map for the Madrid region on satellite imagery (unrelated to the coffee game).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
