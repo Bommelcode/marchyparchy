@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Madrid Bosbrandenkaart — live</title>
+<title>Spanje &amp; Frankrijk Bosbrandenkaart — live</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
   :root {
@@ -49,6 +49,7 @@
     background: #0d1218; border: 1px solid var(--panel-border); color: var(--text);
     border-radius: 6px; padding: 5px 8px; font-size: 12px; flex: 1; min-width: 0;
   }
+  input[type="range"] { accent-color: var(--accent); height: 4px; }
   button {
     background: #1a2330; border: 1px solid var(--panel-border); color: var(--text);
     border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
@@ -130,7 +131,7 @@
 
 <div id="hud" class="panel">
   <button id="gearBtn" title="Instellingen (FIRMS-key)">&#9881;</button>
-  <h1>&#128293; Madrid Bosbrandenkaart</h1>
+  <h1>&#128293; Spanje &amp; Frankrijk Bosbrandenkaart</h1>
   <p class="sub">Live satellietbeeld + actieve-brand-detecties (NASA)</p>
 
   <div class="row">
@@ -143,12 +144,17 @@
     <button id="refreshBtn">&#128260; Ververs</button>
     <button id="fireListBtn">Brandenlijst</button>
   </div>
+  <div class="row">
+    <label for="fireOpacityInput">Branden</label>
+    <input type="range" id="fireOpacityInput" min="10" max="100" value="85" style="flex:1;">
+    <span id="fireOpacityVal" style="color:var(--muted); font-size:11px; min-width:32px; text-align:right;">85%</span>
+  </div>
 
   <div id="status"><span id="liveDot"></span> <span id="statusText">laden…</span></div>
 
   <div class="legend">
     <div class="item"><span class="dot" style="background:#ff3b1f; box-shadow:0 0 4px #ff3b1f;"></span> Actieve-brand-detectie (VIIRS) — vereist gratis FIRMS-key, klik op &#9881;</div>
-    <div class="item"><span class="dot" style="background:#3388ff;"></span> Madrid (referentiepunt)</div>
+    <div class="item"><span class="dot" style="background:#3388ff;"></span> Madrid &amp; Parijs (referentiepunten)</div>
     Detecties komen van satellietoverpassen (enkele keren per dag), dus dit is "live" op enkele uren na — geen doorlopend videobeeld. Standaard staat de datum op gisteren (UTC), want data van vandaag is vaak nog niet compleet.
   </div>
 
@@ -166,7 +172,7 @@
 </div>
 
 <div id="firePanel" class="panel">
-  <h2>Actieve branden — regio Madrid</h2>
+  <h2>Actieve branden — Spanje &amp; Frankrijk</h2>
   <div id="fireEmpty">Geen FIRMS-key ingesteld. Klik op &#9881; om er een toe te voegen voor een lijst met losse detecties.</div>
   <div id="fireList"></div>
 </div>
@@ -176,10 +182,13 @@
 "use strict";
 
 var MADRID = [40.4168, -3.7038];
-// west,south,east,north — Comunidad de Madrid + aangrenzende brandgevoelige sierra's
-var FIRMS_BBOX = "-5.2,39.6,-2.6,41.3";
+var PARIS = [48.8566, 2.3522];
+// west,south,east,north — heel Spanje + heel Frankrijk (incl. Corsica en de
+// brandgevoelige mediterrane/Landes-zones)
+var FIRMS_BBOX = "-9.5,36,8.5,51.3";
 var TRANSPARENT_PX = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 var REFRESH_MS = 5 * 60 * 1000;
+var fireOpacity = 0.85;
 
 function todayUTC() {
   var d = new Date();
@@ -196,13 +205,17 @@ function gibsUrl(layer, date, ext, matrixSet) {
   return "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/" + layer + "/default/" + date + "/" + matrixSet + "/{z}/{y}/{x}." + ext;
 }
 
-var map = L.map("map", { center: MADRID, zoom: 9, zoomControl: false });
+var map = L.map("map", { center: [44.6, 2.5], zoom: 6, zoomControl: false });
 L.control.zoom({ position: "bottomright" }).addTo(map);
 L.control.scale({ position: "bottomleft", imperial: false }).addTo(map);
 
-L.marker(MADRID, {
-  icon: L.divIcon({ className: "", html: '<div style="width:10px;height:10px;border-radius:50%;background:#3388ff;border:2px solid #fff;box-shadow:0 0 4px #000;"></div>', iconSize: [10, 10] })
-}).addTo(map).bindPopup("Madrid");
+function refMarker(latlng, label) {
+  L.marker(latlng, {
+    icon: L.divIcon({ className: "", html: '<div style="width:10px;height:10px;border-radius:50%;background:#3388ff;border:2px solid #fff;box-shadow:0 0 4px #000;"></div>', iconSize: [10, 10] })
+  }).addTo(map).bindPopup(label);
+}
+refMarker(MADRID, "Madrid");
+refMarker(PARIS, "Parijs");
 
 var esriSat = L.tileLayer(
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -292,6 +305,18 @@ document.getElementById("fireListBtn").addEventListener("click", function () {
   document.getElementById("firePanel").classList.toggle("open");
 });
 
+var fireOpacityInput = document.getElementById("fireOpacityInput");
+var fireOpacityVal = document.getElementById("fireOpacityVal");
+fireOpacityInput.value = Math.round(fireOpacity * 100);
+fireOpacityVal.textContent = fireOpacityInput.value + "%";
+fireOpacityInput.addEventListener("input", function () {
+  fireOpacity = fireOpacityInput.value / 100;
+  fireOpacityVal.textContent = fireOpacityInput.value + "%";
+  fireMarkersLayer.eachLayer(function (marker) {
+    marker.setStyle({ opacity: fireOpacity, fillOpacity: fireOpacity * 0.7 });
+  });
+});
+
 function bearingCompass(fromLat, fromLng, toLat, toLng) {
   var y = Math.sin((toLng - fromLng) * Math.PI / 180) * Math.cos(toLat * Math.PI / 180);
   var x = Math.cos(fromLat * Math.PI / 180) * Math.sin(toLat * Math.PI / 180) -
@@ -347,15 +372,17 @@ function renderFireList(rows, errorMsg) {
     .slice(0, 25)
     .forEach(function (r) {
       var lat = parseFloat(r.latitude), lng = parseFloat(r.longitude);
-      var dist = haversineKm(MADRID[0], MADRID[1], lat, lng);
-      var dir = bearingCompass(MADRID[0], MADRID[1], lat, lng);
+      var distMadrid = haversineKm(MADRID[0], MADRID[1], lat, lng);
+      var distParis = haversineKm(PARIS[0], PARIS[1], lat, lng);
+      var nearest = distMadrid <= distParis ? { pt: MADRID, name: "Madrid", dist: distMadrid } : { pt: PARIS, name: "Parijs", dist: distParis };
+      var dir = bearingCompass(nearest.pt[0], nearest.pt[1], lat, lng);
 
       var item = document.createElement("div");
       item.className = "fire-item";
 
       var loc = document.createElement("div");
       loc.className = "loc";
-      loc.textContent = Math.round(dist) + " km " + dir + " van Madrid";
+      loc.textContent = Math.round(nearest.dist) + " km " + dir + " van " + nearest.name;
       item.appendChild(loc);
 
       var meta = document.createElement("div");
@@ -401,7 +428,8 @@ function refreshFires() {
         var frp = parseFloat(r.frp) || 0;
         var radius = 4 + Math.min(10, frp / 20);
         var marker = L.circleMarker([lat, lng], {
-          radius: radius, color: "#ff3b1f", weight: 1, fillColor: "#ff3b1f", fillOpacity: 0.6
+          radius: radius, color: "#ff3b1f", weight: 1, fillColor: "#ff3b1f",
+          opacity: fireOpacity, fillOpacity: fireOpacity * 0.7
         });
         marker.bindPopup(
           "<b>Actieve-brand-detectie</b><br>" +

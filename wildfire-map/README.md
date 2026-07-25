@@ -1,6 +1,6 @@
-# Madrid Bosbrandenkaart
+# Spanje & Frankrijk Bosbrandenkaart
 
-Statische, losstaande webpagina die actieve-brand-detecties rond Madrid toont op een satellietfoto. Geen build-stap, geen server nodig.
+Statische, losstaande webpagina die actieve-brand-detecties in heel Spanje en Frankrijk toont op een satellietfoto. Geen build-stap, geen server nodig.
 
 ## Gebruik
 
@@ -10,7 +10,8 @@ Open `index.html` direct in een browser, of host de map (bv. via GitHub Pages) e
 
 - **Satellietfoto (Esri)** — hoge-resolutie satellietbasislaag, altijd beschikbaar, geen key nodig.
 - **NASA satellietbeeld (van gekozen datum)** — optionele laag, daadwerkelijke VIIRS-opname van die dag (kan gaten hebben door wolken of nachtelijke doorkomst).
-- **🔥 Branden** — individuele actieve-brand-detecties (rode stippen + lijst met tijdstip, satelliet, betrouwbaarheid en stralingsvermogen/FRP) via de [NASA FIRMS Area API](https://firms.modaps.eosdis.nasa.gov/api/area/). Hiervoor is een gratis [FIRMS MAP_KEY](https://firms.modaps.eosdis.nasa.gov/api/map_key/) nodig (± 1 minuut aanvragen, geen kosten), in te vullen via het tandwiel-icoon. De key wordt alleen lokaal in de browser (`localStorage`) bewaard. Ververst automatisch elke 5 minuten.
+- **🔥 Branden** — individuele actieve-brand-detecties (rode stippen + lijst met tijdstip, satelliet, betrouwbaarheid en stralingsvermogen/FRP) via de [NASA FIRMS Area API](https://firms.modaps.eosdis.nasa.gov/api/area/), voor heel Spanje en Frankrijk (incl. Corsica). Hiervoor is een gratis [FIRMS MAP_KEY](https://firms.modaps.eosdis.nasa.gov/api/map_key/) nodig (± 1 minuut aanvragen, geen kosten), in te vullen via het tandwiel-icoon. De key wordt alleen lokaal in de browser (`localStorage`) bewaard. Ververst automatisch elke 5 minuten. Doorzichtigheid van de stippen is te regelen met de "Branden"-schuifregelaar in het paneel.
+- Referentiepunten Madrid en Parijs — de brandenlijst toont afstand/richting tot het dichtstbijzijnde van de twee.
 
 Een eerdere versie probeerde branden ook als NASA GIBS-rasterlaag te tonen (geen key nodig), maar de exacte laag-/tegelparameters bleken niet betrouwbaar te verifiëren en leverden grijze/zwarte tegels op in plaats van brandpunten — die laag is daarom verwijderd. De FIRMS Area API is de officieel gedocumenteerde, geverifieerde route.
 
