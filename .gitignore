@@ -4,7 +4,9 @@
 # Godot-specific ignores
 .import/
 export.cfg
-export_presets.cfg
+
+# Generated HTML5/web export output (regenerate with: godot --headless --export-release "Web" build/web/index.html)
+/build/
 
 # Imported translations (auto-generated from CSV)
 *.translation
